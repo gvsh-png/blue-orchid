@@ -3,7 +3,9 @@ export { textMessage, type Message, type MessageEntry } from "./chat/Message.ts"
 export { followed, follow, unfollow } from "./follows/follows.ts";
 export { jobs, type Job, type JobName, type JobServices } from "./jobs.ts";
 export { deliverNotifications } from "./notifications/deliver.ts";
+export { importCatalog } from "./catalog/importCatalog.ts";
 export { Catalog, type CatalogChanges, type ScheduledRelease, type StoredRelease } from "./ports/Catalog.ts";
+export { CatalogSource, type CatalogSlice } from "./ports/CatalogSource.ts";
 export { Messengers, type Messenger } from "./ports/Messengers.ts";
 export { ScheduleSources, type ScheduleSource, type SourceSnapshot } from "./ports/ScheduleSources.ts";
 export { claimLease, maxAttempts, Subscriptions, type PendingDelivery } from "./ports/Subscriptions.ts";
