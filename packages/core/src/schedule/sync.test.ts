@@ -1,4 +1,4 @@
-import { ChatIdentity, SourceUnavailable } from "@blue-orchid/domain";
+import { ChatIdentity, releaseKey, SourceUnavailable } from "@blue-orchid/domain";
 import type { Release } from "@blue-orchid/domain";
 import { describe, expect, it } from "@effect/vitest";
 import { DateTime, Effect, Layer, Ref } from "effect";
@@ -6,6 +6,7 @@ import { TestClock } from "effect/testing";
 
 import { deliverNotifications } from "../notifications/deliver.ts";
 import { ScheduleSources } from "../ports/ScheduleSources.ts";
+import { Catalog } from "../ports/Catalog.ts";
 import { Subscriptions } from "../ports/Subscriptions.ts";
 import { frieren, release } from "../testing/fixtures.ts";
 import { makeInMemory } from "../testing/InMemory.ts";
@@ -61,6 +62,22 @@ describe("syncSchedule then deliverNotifications", () => {
       yield* source.move("2026-01-09T16:00:00Z");
       yield* syncSchedule().pipe(Effect.provide(layer));
       expect((yield* memory.updates).map((update) => update.id)).toHaveLength(3);
+    }),
+  );
+
+  it.effect("keeps the first of two saves of the same revision, so the release matches its update", () =>
+    Effect.gen(function* () {
+      const memory = yield* makeInMemory({ shows: [frieren], releases: [release()] });
+      const save = (iso: string) =>
+        Catalog.use((catalog) =>
+          catalog.save({ shows: [], releases: [{ release: release({ airsAt: at(iso) }), revision: 1 }], updates: [] }),
+        ).pipe(Effect.provide(memory.layer));
+      yield* save("2026-01-09T16:00:00Z");
+      yield* save("2026-01-09T17:00:00Z");
+      const [stored] = yield* Catalog.use((catalog) => catalog.releasesByKey([releaseKey(release())])).pipe(
+        Effect.provide(memory.layer),
+      );
+      expect(stored && DateTime.formatIso(stored.release.airsAt)).toBe("2026-01-09T16:00:00.000Z");
     }),
   );
 });

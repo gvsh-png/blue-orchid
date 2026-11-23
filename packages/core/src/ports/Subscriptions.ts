@@ -24,7 +24,8 @@ export class Subscriptions extends Context.Service<
     readonly unfollow: (identity: ChatIdentity, show: ShowId) => Effect.Effect<boolean, StoreFailed>;
     readonly followed: (identity: ChatIdentity) => Effect.Effect<ReadonlyArray<Show>, StoreFailed>;
     /**
-     * Takes up to `limit` deliveries no one has claimed in the last `claimLease`, oldest update first, and claims
+     * Takes up to `limit` deliveries with attempts left that no one has claimed in the last `claimLease`, oldest
+     * update first, and claims
      * them in one atomic step, so two overlapping runs never send the same one.
      */
     readonly claim: (limit: number) => Effect.Effect<ReadonlyArray<PendingDelivery>, StoreFailed>;

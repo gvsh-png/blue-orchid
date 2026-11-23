@@ -11,4 +11,12 @@ describe("weekWindow", () => {
       expect(DateTime.formatIso(to)).toBe("2027-03-31T22:00:00.000Z");
     }),
   );
+
+  it.effect("ends at next week's midnight when today's midnight was skipped", () =>
+    Effect.gen(function* () {
+      const { from, to } = yield* weekWindow(DateTime.makeUnsafe("2026-09-06T12:00:00Z"), "America/Santiago");
+      expect(DateTime.formatIso(from)).toBe("2026-09-06T04:00:00.000Z");
+      expect(DateTime.formatIso(to)).toBe("2026-09-13T03:00:00.000Z");
+    }),
+  );
 });

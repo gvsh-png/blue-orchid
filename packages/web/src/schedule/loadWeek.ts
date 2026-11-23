@@ -9,7 +9,9 @@ export const weekWindow = (now: DateTime.Utc, timeZone: string) =>
     Effect.fromOption,
     Effect.map((zoned) => {
       const start = DateTime.startOf(zoned, "day");
-      return { from: DateTime.toUtc(start), to: DateTime.toUtc(DateTime.add(start, { days: 7 })) };
+      // Taking the day's start again matters where clocks skip midnight: today may start at 01:00, next week at 00:00.
+      const end = DateTime.startOf(DateTime.add(start, { days: 7 }), "day");
+      return { from: DateTime.toUtc(start), to: DateTime.toUtc(end) };
     }),
   );
 

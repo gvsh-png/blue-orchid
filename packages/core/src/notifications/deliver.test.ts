@@ -62,4 +62,16 @@ describe("deliverNotifications", () => {
       expect(attempts).toEqual([...Array.from({ length: maxAttempts }, () => 1), 0, 0]);
     }),
   );
+
+  it.effect("stops reclaiming a delivery whose runs keep dying before they report", () =>
+    Effect.gen(function* () {
+      const memory = yield* setup(["1"]);
+      const claims = [];
+      for (let run = 0; run < maxAttempts + 2; run++) {
+        claims.push((yield* Subscriptions.use((s) => s.claim(10)).pipe(Effect.provide(memory.layer))).length);
+        yield* TestClock.adjust(Duration.sum(claimLease, Duration.seconds(1)));
+      }
+      expect(claims).toEqual([...Array.from({ length: maxAttempts }, () => 1), 0, 0]);
+    }),
+  );
 });

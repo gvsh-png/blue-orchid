@@ -123,6 +123,9 @@ const catalog = Catalog.of({
           .onConflictDoUpdate({
             target: releases.key,
             set: { airsAt: sql`excluded.airs_at`, revision: sql`excluded.revision` },
+            // A run that read an older revision changes nothing, and its update id already exists, so the release
+            // and its update stay a matching pair. The next sync sees the newer time and records it.
+            setWhere: sql`${releases.revision} < excluded.revision`,
           }),
       ),
       ...chunks(updateRows, 20).map((batch) =>
@@ -196,7 +199,16 @@ const subscriptions = Subscriptions.of({
             eq(deliveries.userId, follows.userId),
           ),
         )
-        .where(or(isNull(deliveries.updateId), and(eq(deliveries.status, "claimed"), lte(deliveries.claimedAt, stale))))
+        .where(
+          or(
+            isNull(deliveries.updateId),
+            and(
+              eq(deliveries.status, "claimed"),
+              lte(deliveries.claimedAt, stale),
+              lt(deliveries.attempts, maxAttempts),
+            ),
+          ),
+        )
         .orderBy(asc(updates.detectedAt))
         .limit(limit),
     );
@@ -215,7 +227,7 @@ const subscriptions = Subscriptions.of({
         .onConflictDoUpdate({
           target: [deliveries.updateId, deliveries.platform, deliveries.userId],
           set: { attempts: sql`${deliveries.attempts} + 1`, claimedAt: now },
-          setWhere: sql`${deliveries.status} = 'claimed' AND ${deliveries.claimedAt} <= ${stale}`,
+          setWhere: sql`${deliveries.status} = 'claimed' AND ${deliveries.claimedAt} <= ${stale} AND ${deliveries.attempts} < ${maxAttempts}`,
         })
         .returning({ updateId: deliveries.updateId }),
     );

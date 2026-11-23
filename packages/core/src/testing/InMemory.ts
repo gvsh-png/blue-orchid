@@ -83,7 +83,13 @@ export const makeInMemory = Effect.fn("InMemory.make")(function* (seed: {
         Ref.update(shows, (byId) => new Map([...byId, ...changes.shows.map((show) => [show.id, show] as const)])),
         Ref.update(
           releases,
-          (all) => new Map([...all, ...changes.releases.map((row) => [releaseKey(row.release), row] as const)]),
+          (all) =>
+            new Map([
+              ...all,
+              ...changes.releases
+                .filter((row) => (all.get(releaseKey(row.release))?.revision ?? -1) < row.revision)
+                .map((row) => [releaseKey(row.release), row] as const),
+            ]),
         ),
         Ref.update(
           updates,
@@ -130,6 +136,7 @@ export const makeInMemory = Effect.fn("InMemory.make")(function* (seed: {
           return (
             delivery === undefined ||
             (delivery.status === "claimed" &&
+              delivery.attempts < maxAttempts &&
               DateTime.isLessThanOrEqualTo(DateTime.addDuration(delivery.claimedAt, claimLease), now))
           );
         };

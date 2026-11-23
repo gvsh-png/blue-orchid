@@ -13,4 +13,8 @@ describe("renderMessage", () => {
     expect(rendered.length).toBeLessThanOrEqual(2000);
     expect(rendered.endsWith("…")).toBe(true);
   });
+
+  it("never splits an emoji at the cut", () => {
+    expect(renderMessage(textMessage(`${"a".repeat(1998)}😀abc`))).toBe(`${"a".repeat(1998)}…`);
+  });
 });

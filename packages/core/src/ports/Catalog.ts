@@ -35,7 +35,8 @@ export class Catalog extends Context.Service<
     readonly releasesByKey: (keys: ReadonlyArray<string>) => Effect.Effect<ReadonlyArray<StoredRelease>, StoreFailed>;
     /**
      * Writes everything or nothing. A release must never be saved without its update: a retry would then see no
-     * change and the update would be lost. Updates whose id exists are skipped, so repeating a save is safe.
+     * change and the update would be lost. Updates whose id exists are skipped, and a release is only
+     * replaced by a higher revision, so repeating a save, or two runs saving the same revision, is safe.
      */
     readonly save: (changes: CatalogChanges) => Effect.Effect<void, StoreFailed>;
   }

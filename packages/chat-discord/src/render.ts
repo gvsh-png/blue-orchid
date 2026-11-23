@@ -14,7 +14,14 @@ const line = (entry: MessageEntry) => {
   return `**${escape(entry.title)}** · ${escape(entry.detail)} · ${stamp(entry.at, "f")} ${stamp(entry.at, "R")}${was}`;
 };
 
-const fit = (text: string) => (text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text);
+/** Cuts at a whole code point, so an emoji is never split in half. */
+const fit = (text: string) => {
+  if (text.length <= maxLength) {
+    return text;
+  }
+  const cut = text.slice(0, maxLength - 1);
+  return `${/[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut}…`;
+};
 
 export const renderMessage = (message: Message): string => {
   const lines = [fit(escape(message.text))];
