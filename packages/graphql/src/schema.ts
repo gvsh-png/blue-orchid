@@ -37,14 +37,10 @@ ShowRef.implement({
     status: t.field({ type: Status, nullable: true, resolve: (show) => show.status }),
     season: t.field({ type: Season, nullable: true, resolve: (show) => show.season }),
     year: t.exposeInt("year", { nullable: true }),
-    startDate: t.exposeString("startDate", {
-      nullable: true,
-    }),
+    startDate: t.exposeString("startDate", { nullable: true }),
     endDate: t.exposeString("endDate", { nullable: true }),
     episodeMinutes: t.exposeInt("episodeMinutes", { nullable: true }),
-    siteIds: t.idList({
-      resolve: (show) => show.siteIds,
-    }),
+    siteIds: t.idList({ resolve: (show) => show.siteIds }),
     releases: t.field({
       type: [ScheduledReleaseRef],
       resolve: (show, _, context) =>
@@ -87,10 +83,10 @@ ScheduledReleaseRef.implement({
     release: t.field({ type: ReleaseRef, resolve: (row) => row.release }),
     endsAt: t.string({
       nullable: true,
-      resolve: ({ show, release }) =>
-        show.episodeMinutes === null
-          ? null
-          : DateTime.formatIso(DateTime.add(release.airsAt, { minutes: show.episodeMinutes })),
+      resolve: ({ show, release }) => {
+        const endsAt = show.endsAt(release.airsAt);
+        return endsAt === null ? null : DateTime.formatIso(endsAt);
+      },
     }),
   }),
 });

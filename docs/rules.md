@@ -13,7 +13,7 @@ remove the rule.
 | Effects run only in composition roots                                                 | `orchid/no-effect-run`                                                           |
 | Failures are tagged errors, not exceptions                                            | `orchid/no-throw`, `orchid/no-try-catch`, `orchid/schema-errors`                 |
 | No async/await or hand-made Promises outside tests                                    | `orchid/no-async`                                                                |
-| No casts or `any`                                                                     | `orchid/no-type-assertion`, `orchid/no-any`                                      |
+| No casts, non-null assertions or `any`                                                | `orchid/no-type-assertion`, `orchid/no-any`                                      |
 | Unknown data is decoded with a Schema                                                 | `orchid/no-json-parse`                                                           |
 | Time comes from Effect's Clock                                                        | `orchid/time-through-effect`                                                     |
 | One style for functions and services                                                  | `orchid/prefer-effect-fn`, `orchid/service-style`                                |

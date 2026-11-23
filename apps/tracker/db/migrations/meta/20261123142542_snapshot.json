@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0df11b06-8e7f-46ab-97df-b69d5fc49407",
+  "id": "a8fb72b8-1651-41e7-b8e2-6ba1931020f2",
   "prevId": "517b9749-4a2e-4788-bb37-a3118afcc2da",
   "tables": {
     "deliveries": {
@@ -208,12 +208,66 @@
             "airs_at"
           ],
           "isUnique": false
+        },
+        "releases_show_airs_at": {
+          "name": "releases_show_airs_at",
+          "columns": [
+            "show_id",
+            "airs_at"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
         "releases_show_id_shows_id_fk": {
           "name": "releases_show_id_shows_id_fk",
           "tableFrom": "releases",
+          "tableTo": "shows",
+          "columnsFrom": [
+            "show_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "show_site_ids": {
+      "name": "show_site_ids",
+      "columns": {
+        "site_id": {
+          "name": "site_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "show_id": {
+          "name": "show_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "show_site_ids_show": {
+          "name": "show_site_ids_show",
+          "columns": [
+            "show_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "show_site_ids_show_id_shows_id_fk": {
+          "name": "show_site_ids_show_id_shows_id_fk",
+          "tableFrom": "show_site_ids",
           "tableTo": "shows",
           "columnsFrom": [
             "show_id"
@@ -308,14 +362,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "site_ids": {
-          "name": "site_ids",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'[]'"
         }
       },
       "indexes": {},

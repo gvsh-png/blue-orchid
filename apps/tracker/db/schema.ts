@@ -1,4 +1,3 @@
-import { sql } from "void/db";
 import { index, integer, primaryKey, sqliteTable, text } from "void/schema-d1";
 
 /** Times are epoch milliseconds in UTC. */
@@ -14,10 +13,19 @@ export const shows = sqliteTable("shows", {
   startDate: text("start_date"),
   endDate: text("end_date"),
   episodeMinutes: integer("episode_minutes"),
-  siteIds: text("site_ids", { mode: "json" })
-    .notNull()
-    .default(sql`'[]'`),
 });
+
+/** Every site id of a show, its own id included. A site id belongs to one show. */
+export const showSiteIds = sqliteTable(
+  "show_site_ids",
+  {
+    siteId: text("site_id").primaryKey(),
+    showId: text("show_id")
+      .notNull()
+      .references(() => shows.id),
+  },
+  (table) => [index("show_site_ids_show").on(table.showId)],
+);
 
 export const releases = sqliteTable(
   "releases",
@@ -33,7 +41,10 @@ export const releases = sqliteTable(
     /** How many times this release has changed. An update's id carries the revision it created. */
     revision: integer("revision").notNull().default(0),
   },
-  (table) => [index("releases_airs_at").on(table.airsAt)],
+  (table) => [
+    index("releases_airs_at").on(table.airsAt),
+    index("releases_show_airs_at").on(table.showId, table.airsAt),
+  ],
 );
 
 /** `change` is the domain Change encoded as JSON by its Schema. */
