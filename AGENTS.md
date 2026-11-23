@@ -36,8 +36,9 @@ We can't compromise on these.
 
 ## How it works
 
-One Void app on Cloudflare serves the website, the API and the bot, and runs two crons: `sync-schedule` writes
-releases and updates into D1, `deliver-notifications` sends them. Dependencies point inward: `apps/tracker` →
+One Void app on Cloudflare serves the website, the API and the bot, and runs three crons: `import-catalog` refreshes
+shows from the catalog source, `sync-schedule` writes releases and updates into D1, `deliver-notifications` sends
+them. Dependencies point inward: `apps/tracker` →
 adapters (`graphql`, `chat-discord`, `source-anilist`, `web`) → `core` → `domain`. `.dependency-cruiser.cjs` holds what each
 package may import, and `docs/internals/architecture.md` traces a request and a cron run.
 

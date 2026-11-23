@@ -87,6 +87,17 @@ describe("AniListCatalogLive", () => {
     }),
   );
 
+  it.effect("skips a show the catalog can't hold and keeps the rest of the slice", () =>
+    Effect.gen(function* () {
+      const untitled = { ...goblin, id: 1, title: { english: "", romaji: null } };
+      const anilist = anilistAnswering([page(false, [untitled, goblin])]);
+      const shows = yield* CatalogSource.use((source) => source.fetch({ _tag: "Airing" })).pipe(
+        Effect.provide(anilist.layer),
+      );
+      expect(shows.map((show) => show.id)).toEqual(["anilist:209219"]);
+    }),
+  );
+
   it.effect("asks for one start year as a FuzzyDateInt range", () =>
     Effect.gen(function* () {
       const anilist = anilistAnswering([page(false, [])]);

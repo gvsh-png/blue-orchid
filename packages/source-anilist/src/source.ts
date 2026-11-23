@@ -1,7 +1,7 @@
 import type { CatalogSlice } from "@blue-orchid/core";
 import { CatalogSource } from "@blue-orchid/core";
 import type { Format, Season, Status } from "@blue-orchid/domain";
-import { Show, ShowId, SourceUnavailable } from "@blue-orchid/domain";
+import { Show, SourceUnavailable } from "@blue-orchid/domain";
 import { Effect, Layer, Schedule, Schema } from "effect";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
@@ -110,9 +110,10 @@ const partialDate = (date: typeof FuzzyDate.Type | null) => {
     : `${date.year}-${twoDigits(date.month)}-${twoDigits(date.day)}`;
 };
 
+/** Decoded, so a show AniList describes in a way the catalog can't hold fails here instead of throwing. */
 const toShow = (media: typeof Media.Type) => {
-  const id = ShowId.make(`anilist:${media.id}`);
-  return new Show({
+  const id = `anilist:${media.id}`;
+  return Schema.decodeUnknownEffect(Show)({
     id,
     title: media.title.english ?? media.title.romaji ?? `AniList ${media.id}`,
     imageUrl: media.coverImage?.large ?? null,
@@ -124,7 +125,7 @@ const toShow = (media: typeof Media.Type) => {
     startDate: partialDate(media.startDate),
     endDate: partialDate(media.endDate),
     episodeMinutes: media.duration,
-    siteIds: media.idMal === null ? [id] : [id, ShowId.make(`myanimelist:${media.idMal}`)],
+    siteIds: media.idMal === null ? [id] : [id, `myanimelist:${media.idMal}`],
   });
 };
 
@@ -163,7 +164,11 @@ export const AniListCatalogLive = Layer.effect(
           const shows: Array<Show> = [];
           for (let page = 1; ; page++) {
             const { data } = yield* fetchPage(page, slice);
-            shows.push(...data.Page.media.map(toShow));
+            const [fitting, skipped] = yield* Effect.partition(data.Page.media, toShow);
+            if (skipped.length > 0) {
+              yield* Effect.logWarning("Skipped AniList shows the catalog can't hold", skipped);
+            }
+            shows.push(...fitting);
             if (!data.Page.pageInfo.hasNextPage) {
               return shows;
             }

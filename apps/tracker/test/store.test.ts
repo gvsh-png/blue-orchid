@@ -139,11 +139,11 @@ describe("store on D1", () => {
     }),
   );
 
-  it.effect("saves more shows and releases than one statement can bind", () =>
+  it.effect("saves a catalog slice's 1,000 shows, and more releases than one statement can bind", () =>
     Effect.gen(function* () {
       const store = yield* localStore;
-      const shows = Array.from({ length: 30 }, (_, index) => show(`anilist:${index}`, [`myanimelist:${index}`]));
-      const releases = shows.flatMap((each) =>
+      const shows = Array.from({ length: 1000 }, (_, index) => show(`anilist:${index}`, [`myanimelist:${index}`]));
+      const releases = shows.slice(0, 30).flatMap((each) =>
         Array.from({ length: 10 }, (_, episode) => ({
           release: release({ showId: each.id, episode: episode + 1 }),
           revision: 0,
@@ -152,9 +152,13 @@ describe("store on D1", () => {
       const stored = yield* Effect.gen(function* () {
         const catalog = yield* Catalog;
         yield* catalog.save({ shows, releases, updates: [] });
-        return yield* catalog.releasesBetween(at("2026-01-01T00:00:00Z"), at("2026-02-01T00:00:00Z"));
+        return {
+          releases: yield* catalog.releasesBetween(at("2026-01-01T00:00:00Z"), at("2026-02-01T00:00:00Z")),
+          last: yield* catalog.show(ShowId.make("myanimelist:999")),
+        };
       }).pipe(Effect.provide(store));
-      expect(stored).toHaveLength(300);
+      expect(stored.releases).toHaveLength(300);
+      expect(stored.last.id).toBe("anilist:999");
     }),
   );
 });
