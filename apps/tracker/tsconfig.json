@@ -1,0 +1,9 @@
+{
+  "extends": ["../../tsconfig.base.json", "./.void/tsconfig.json"],
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
+    "jsx": "react-jsx"
+  },
+  "include": ["src", "db", "server", "routes", "crons", "scripts", "test", "*.ts"]
+}

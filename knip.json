@@ -1,0 +1,17 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreDependencies": ["@effect/language-service", "vite"],
+  "workspaces": {
+    ".": {
+      "entry": ["tools/lint/*.ts", "tools/scripts/*.ts"]
+    },
+    "apps/tracker": {
+      "entry": ["routes/**/*.ts", "crons/*.ts", "scripts/*.ts", "db/schema.ts", "env.ts", "auth.ts", "void.config.ts"],
+      "ignoreDependencies": ["better-auth"]
+    },
+    "infra": {
+      "entry": ["alchemy.run.ts"]
+    },
+    "packages/*": {}
+  }
+}
