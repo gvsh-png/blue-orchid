@@ -17,6 +17,7 @@
     "@blue-orchid/core": "workspace:*",
     "@blue-orchid/domain": "workspace:*",
     "@blue-orchid/graphql": "workspace:*",
+    "@blue-orchid/source-anilist": "workspace:*",
     "@blue-orchid/web": "workspace:*",
     "better-auth": "catalog:",
     "effect": "catalog:",

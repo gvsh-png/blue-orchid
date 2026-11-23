@@ -37,6 +37,13 @@ const packages = {
     node: false,
     hint: "chat-discord adapts core's commands and Messenger port to Discord. Platform-neutral logic belongs in core. See .claude/skills/adding-a-chat-platform/SKILL.md.",
   },
+  "source-anilist": {
+    dir: "packages/source-anilist",
+    workspace: ["core", "domain"],
+    npm: ["effect"],
+    node: false,
+    hint: "source-anilist implements core's CatalogSource for AniList. Import logic belongs in core.",
+  },
   web: {
     dir: "packages/web",
     workspace: ["domain", "graphql"],
@@ -46,7 +53,7 @@ const packages = {
   },
   tracker: {
     dir: "apps/tracker",
-    workspace: ["chat-discord", "core", "domain", "graphql", "web"],
+    workspace: ["chat-discord", "core", "domain", "graphql", "source-anilist", "web"],
     npm: "any",
     node: true,
     hint: "tracker is the Void app: it wires packages together and deploys them. Logic goes in a package.",

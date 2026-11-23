@@ -12,6 +12,9 @@
 - **Region**: the country a release time and its streaming links apply to. Norway first.
 - **Catalog**: our stored shows and releases. Every surface reads from it.
 - **Schedule source**: an outside system we pull releases from, such as AniList.
+- **Catalog source**: an outside system we pull every show's details from, such as AniList.
+- **Catalog slice**: the part of the catalog one import run refreshes: airing shows, upcoming shows, or the shows
+  that started in one year.
 - **Update**: a change to the schedule that the sync job saw: an episode scheduled or rescheduled.
 - **Follow**: a chat identity asking for DMs about one show.
 - **Chat identity**: a person on one chat platform, written `platform:userId`.
