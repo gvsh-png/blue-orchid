@@ -1,47 +1,102 @@
 # blue-orchid
 
-An anime release tracker: what airs this week, at what time where you are, and a DM when a show you follow
-changes. People use the website; people and agents use the Discord bot and the private GraphQL API.
+blue-orchid is an anime release tracker: what airs this week, at what time where you are, and a message when a
+show you follow changes. Follow from the Discord bot with no account, or sign in to hear by email and other
+channels too. People use the website and the bot; agents use the API.
 
-## Done means green
+## What makes blue-orchid special
 
-`pnpm check` is the gate: format, lint, types, import boundaries, unused code, docs links and tests. The
-pre-commit hook, the Claude Code Stop hook and CI all run it. Work is done when it passes. Every failure prints
-its fix; follow the message instead of loosening the rule. A rule that seems wrong is a question for the user.
+We can't compromise on these.
 
-## Packages
+- **Every change, once, before it airs:** each change to a show, from a moved episode to a sequel announcement,
+  becomes exactly one update, and each update reaches a follower exactly once, through retries, overlapping runs
+  and crashes. Updates may be bundled, but a bundle is timed to the follower's zone and lands before the release
+  it is about. Faster is welcome, never at the price of a duplicate, a lost update or a late one.
+- **Your time, your week:** every release time is shown in the reader's zone, or in one they pick such as JST,
+  and a week is seven local calendar days, even where clocks skip midnight. Nobody converts a time in their head.
+- **Our own catalog:** every surface, agents through the API included, reads our own stored catalog and never
+  calls a schedule source while serving. We link out to other platforms and import from them, such as a watch
+  list; showing the schedule never waits on them.
 
-Dependencies point inward: `apps/tracker` → adapters (`graphql`, `chat-discord`, `web`) → `core` → `domain`.
-`.dependency-cruiser.cjs` holds the full table, with what each package may import and why.
+## General principles
 
-- `packages/domain`: schemas, branded ids, tagged errors.
-- `packages/core`: use cases, ports (`src/ports`), chat commands (`src/chat/commands.ts`), jobs (`src/jobs.ts`), in-memory fakes (`src/testing`).
-- `packages/graphql`: the private API (Pothos and Yoga) and the website's operations (`src/operations.ts`).
-- `packages/chat-discord`: Discord slash commands and DMs.
-- `packages/web`: the website (React, TanStack Router).
-- `apps/tracker`: the Void app. Wires everything, owns the database, routes, crons and auth, and deploys.
-- `infra`: the Alchemy stack, for cloud resources Void does not own.
+- Channel your inner DRY, YAGNI, KISS and SOLID.
+- Build on the shared layer each area already has. If it can't do what you need, extend it there.
+- Write real fixes, not bypasses. Every check failure prints its fix; follow it instead of loosening the rule.
+- Keep code in one function unless a part is reused or composable. Extract a helper only when it names a real concept.
+- Validate unknown values once, at the boundary that owns them, and pass typed values inward.
+- Before adding complexity for a speculative or vanishingly unlikely race or edge case, explain the concrete
+  failure mode, likelihood and complexity cost to the user and get their buy-in. Sync and delivery are the
+  exception: they run late, repeat and overlap by design, so their races are real.
+- If a short request has two possible meanings, ask one question before you start.
+- Call a bug fixed only when a test, log or recording shows it.
+- Ask the user before adding a package, an npm dependency or a cloud resource, and before changing a rule in
+  `vite.config.ts`, `.dependency-cruiser.cjs` or `tools/lint/orchid.ts`. A rule that seems wrong is a question,
+  not an edit.
 
-Each package has its own AGENTS.md saying what goes in it.
+## How it works
 
-## Effect
+One Void app on Cloudflare serves the website, the API and the bot, and runs two crons: `sync-schedule` writes
+releases and updates into D1, `deliver-notifications` sends them. Dependencies point inward: `apps/tracker` →
+adapters (`graphql`, `chat-discord`, `web`) → `core` → `domain`. `.dependency-cruiser.cjs` holds what each
+package may import, and `docs/internals/architecture.md` traces a request and a cron run.
 
-Code is Effect v4 throughout: `Effect.fn` for functions, `Context.Service` for services, `Schema.TaggedError`
-for errors, `yield* DateTime.now` for time. Effects run only in the composition roots that the root
-`vite.config.ts` lists. For any Effect API, read `node_modules/effect/ai-docs/` and the source; your memory of
-Effect v3 is wrong for this codebase. Void's docs for the installed version are in `node_modules/void/docs/`.
+| Directory               | What it is                                                   | Read first                        |
+| ----------------------- | ------------------------------------------------------------ | --------------------------------- |
+| `packages/domain`       | Schemas, branded ids, tagged errors                          | `packages/domain/AGENTS.md`       |
+| `packages/core`         | Use cases, ports, chat commands, jobs, in-memory fakes       | `packages/core/AGENTS.md`         |
+| `packages/graphql`      | The API (Pothos, Yoga) and the website's operations          | `packages/graphql/AGENTS.md`      |
+| `packages/chat-discord` | Discord slash commands and DMs                               | `packages/chat-discord/AGENTS.md` |
+| `packages/web`          | The website (React, TanStack Router)                         | `packages/web/AGENTS.md`          |
+| `apps/tracker`          | The Void app: wiring, database, routes, crons, auth, deploys | `apps/tracker/AGENTS.md`          |
+| `infra`                 | The Alchemy stack, for cloud resources Void does not own     | `docs/internals/hosting.md`       |
 
-## Recipes
+Code is Effect v4 throughout: `Effect.fn` for functions, `Context.Service` for services, `Schema.TaggedError` for
+errors, `yield* DateTime.now` for time. Effects run only in the composition roots that the root `vite.config.ts`
+lists. Your memory of Effect v3 is wrong here: read `packages/core/node_modules/effect/ai-docs/` and the source.
+Void's docs for the installed version are in `apps/tracker/node_modules/void/docs/`.
 
-- New user-facing behaviour (a query, a command, a page): `.claude/skills/adding-a-feature/SKILL.md`.
-- New scheduled job: `.claude/skills/adding-a-cron-job/SKILL.md`.
-- New chat platform, such as Telegram: `.claude/skills/adding-a-chat-platform/SKILL.md`.
+New user-facing behaviour, a scheduled job or a chat platform each has a skill in `.claude/skills/`; follow it.
 
-## Ask first
+## Hazards
 
-Ask the user before adding a package, an npm dependency, or a cloud resource, and before changing a rule in
-`vite.config.ts`, `.dependency-cruiser.cjs` or `tools/lint/orchid.ts`.
+1. **Deploying.** `void deploy` and `void secret put` act on the live Cloudflare account and its D1 data. Run
+   them only when the user asks; `pnpm dev` and its local D1 are for trying things.
+2. **Shipping a migration.** A migration in `apps/tracker/db/migrations/` is permanent once deployed. Change
+   `db/schema.ts`, run `db:generate`, and read the SQL before committing. Never edit a committed migration; add a
+   new one.
+3. **Registering commands.** `discord:register` with a real `apps/tracker/.env` replaces the live bot's slash
+   commands for everyone. Run it only after a command change the user wants live.
+4. **Moving the interactions route.** Discord's developer portal holds `/api/discord/interactions`. Renaming the
+   route silently cuts the bot off until the portal is updated, so leave it in place unless the user asks.
+5. **Upgrading Alchemy.** v2 is beta, pinned to an exact version, and breaks every week or two. Upgrade it only
+   as its own change, on purpose.
 
-## More
+## Docs
 
-`docs/README.md` indexes the rest: why things are the way they are, the glossary, and which check enforces each rule.
+- Agents read the code, so most changes need no doc.
+- Record a decision in `docs/internals/decisions.md` only when it is hard to reverse, surprising without context
+  and the result of a real trade-off. If any of the three is missing, skip it.
+- A decision record is one concise paragraph: the context, the decision and why.
+- State each fact once, in the doc that owns it. Delete what a change makes stale in the same change.
+- New terms go in `docs/internals/glossary.md`, and code uses exactly that word.
+
+## Checks
+
+- `pnpm check` is the gate. Work is done when it passes. The pre-commit hook and CI (`mise run check`) run it,
+  and the Claude Code Stop hook runs it whenever the worktree is dirty, so a red gate keeps you working.
+- Every rule in `docs/rules.md` has a check. A new rule comes with its check, or it is not a rule.
+- Test the real implementation instead of copying its logic into the test or mocking it. For ports, use the
+  fakes in `packages/core/src/testing`; they are the only stand-ins, and only tests may import them.
+- A job is done when a test runs it twice and the second run changes nothing.
+
+## Branches and pull requests
+
+- Use a short branch name of at most three hyphenated words, such as `session-recovery` or `fix-scroll-state`.
+- Use conventional commit titles: `type(scope): summary`.
+- Make a PR only when asked.
+
+## Code and residue
+
+- Add comments only where the code can't speak for itself.
+- Keep plans, research notes and scratch files outside the worktree.
