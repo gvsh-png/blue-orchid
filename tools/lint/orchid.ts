@@ -99,7 +99,7 @@ const noAsync = defineRule({
 });
 
 const assertionMessage =
-  "Don't cast with `as`. Decode unknown data with Schema.decodeUnknownEffect, narrow with a type guard, or fix the type where it is created. (`as const` and casts in *.test.ts files are allowed.)";
+  "Don't cast with `as` or assert non-null with `!`. Decode unknown data with Schema.decodeUnknownEffect, narrow with a type guard or an `=== undefined` check, or fix the type where it is created. (`as const` and casts in *.test.ts files are allowed.)";
 
 const noTypeAssertion = defineRule({
   create(context) {
@@ -113,6 +113,9 @@ const noTypeAssertion = defineRule({
         }
       },
       TSTypeAssertion(node) {
+        context.report({ node, message: assertionMessage });
+      },
+      TSNonNullExpression(node) {
         context.report({ node, message: assertionMessage });
       },
     };

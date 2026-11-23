@@ -67,9 +67,28 @@ export const makeInMemory = Effect.fn("InMemory.make")(function* (seed: {
     show: (id) =>
       Ref.get(shows).pipe(
         Effect.flatMap((byId) => {
-          const show = byId.get(id);
+          const show = byId.get(id) ?? [...byId.values()].find((candidate) => candidate.siteIds.includes(id));
           return show === undefined ? Effect.fail(new ShowNotFound({ query: id })) : Effect.succeed(show);
         }),
+      ),
+    showReleases: (id) =>
+      Ref.get(releases).pipe(
+        Effect.map((all) =>
+          [...all.values()]
+            .map((row) => row.release)
+            .filter((release) => release.showId === id)
+            .toSorted((a, b) => DateTime.toEpochMillis(a.airsAt) - DateTime.toEpochMillis(b.airsAt)),
+        ),
+      ),
+    nextRelease: (id, from) =>
+      Ref.get(releases).pipe(
+        Effect.map((all) =>
+          [...all.values()]
+            .map((row) => row.release)
+            .filter((release) => release.showId === id && DateTime.isGreaterThanOrEqualTo(release.airsAt, from))
+            .toSorted((a, b) => DateTime.toEpochMillis(a.airsAt) - DateTime.toEpochMillis(b.airsAt))
+            .at(0),
+        ),
       ),
     searchShows: (title, limit) =>
       Ref.get(shows).pipe(

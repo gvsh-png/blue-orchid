@@ -6,6 +6,7 @@ import {
   Release,
   releaseKey,
   Show,
+  ShowId,
   ShowNotFound,
   StoreFailed,
   Update,
@@ -13,11 +14,19 @@ import {
 import { DateTime, Duration, Effect, Layer, Schema } from "effect";
 import { and, asc, db, eq, gte, inArray, isNull, lt, lte, or, sql } from "void/db";
 
-import { deliveries, follows, releases, shows, updates } from "../db/schema.ts";
+import { deliveries, follows, releases, showSiteIds, shows, updates } from "../db/schema.ts";
 
 /** D1 binds at most 100 values per statement, so writes and IN lists go in chunks. */
+const maxBoundValues = 100;
+
 const chunks = <A>(items: ReadonlyArray<A>, size: number): ReadonlyArray<ReadonlyArray<A>> =>
   Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
+
+/** Rows per insert, sized by how many columns a row binds. */
+const insertBatches = <A extends object>(rows: ReadonlyArray<A>) => {
+  const [first] = rows;
+  return first === undefined ? [] : chunks(rows, Math.floor(maxBoundValues / Object.keys(first).length));
+};
 
 const query = <A>(operation: string, run: () => Promise<A>) =>
   Effect.tryPromise({ try: run, catch: (cause) => new StoreFailed({ operation, cause }) });
@@ -30,7 +39,15 @@ const decode =
 type ShowRow = typeof shows.$inferSelect;
 type ReleaseRow = typeof releases.$inferSelect;
 
-const toShow = (row: ShowRow) => decode(Show, "decode show")(row);
+const siteIdsOfShow = sql<string>`(SELECT json_group_array(site_id) FROM (SELECT own.site_id FROM ${showSiteIds} AS own WHERE own.show_id = ${shows.id} ORDER BY own.site_id))`;
+
+const SiteIds = Schema.fromJsonString(Schema.Array(ShowId));
+
+const toShow = ({ show, siteIds }: { readonly show: ShowRow; readonly siteIds: string }) =>
+  decode(
+    SiteIds,
+    "decode site ids",
+  )(siteIds).pipe(Effect.flatMap((decoded) => decode(Show, "decode show")({ ...show, siteIds: decoded })));
 const toRelease = (row: ReleaseRow) =>
   decode(Release, "decode release")({ ...row, airsAt: DateTime.makeUnsafe(row.airsAt) });
 
@@ -40,7 +57,7 @@ const catalog = Catalog.of({
   releasesBetween: (from, to) =>
     query("releasesBetween", () =>
       db
-        .select({ show: shows, release: releases })
+        .select({ show: shows, siteIds: siteIdsOfShow, release: releases })
         .from(releases)
         .innerJoin(shows, eq(shows.id, releases.showId))
         .where(and(gte(releases.airsAt, DateTime.toEpochMillis(from)), lt(releases.airsAt, DateTime.toEpochMillis(to))))
@@ -48,27 +65,46 @@ const catalog = Catalog.of({
         .limit(1000),
     ).pipe(
       Effect.flatMap((rows) =>
-        Effect.forEach(rows, (row) => Effect.all({ show: toShow(row.show), release: toRelease(row.release) })),
+        Effect.forEach(rows, (row) => Effect.all({ show: toShow(row), release: toRelease(row.release) })),
       ),
     ),
   show: Effect.fn("Catalog.show")(function* (id) {
-    const [row] = yield* query("show", () => db.select().from(shows).where(eq(shows.id, id)).limit(1));
+    const [row] = yield* query("show", () =>
+      db
+        .select({ show: shows, siteIds: siteIdsOfShow })
+        .from(showSiteIds)
+        .innerJoin(shows, eq(shows.id, showSiteIds.showId))
+        .where(eq(showSiteIds.siteId, id)),
+    );
     if (row === undefined) {
       return yield* new ShowNotFound({ query: id });
     }
     return yield* toShow(row);
   }),
+  showReleases: (id) =>
+    query("showReleases", () =>
+      db.select().from(releases).where(eq(releases.showId, id)).orderBy(asc(releases.airsAt)).limit(1000),
+    ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, toRelease))),
+  nextRelease: (id, from) =>
+    query("nextRelease", () =>
+      db
+        .select()
+        .from(releases)
+        .where(and(eq(releases.showId, id), gte(releases.airsAt, DateTime.toEpochMillis(from))))
+        .orderBy(asc(releases.airsAt))
+        .limit(1),
+    ).pipe(Effect.flatMap(([row]) => (row === undefined ? Effect.succeed(undefined) : toRelease(row)))),
   searchShows: (title, limit) =>
     query("searchShows", () =>
       db
-        .select()
+        .select({ show: shows, siteIds: siteIdsOfShow })
         .from(shows)
         .where(sql`${shows.title} LIKE ${`%${escapeLike(title)}%`} ESCAPE '\\'`)
         .orderBy(sql`length(${shows.title})`)
         .limit(limit),
     ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, toShow))),
   releasesByKey: (keys) =>
-    Effect.forEach(chunks(keys, 90), (batch) =>
+    Effect.forEach(chunks(keys, maxBoundValues), (batch) =>
       query("releasesByKey", () =>
         db
           .select()
@@ -95,31 +131,65 @@ const catalog = Catalog.of({
       ),
     );
     const statements = [
-      ...chunks(changes.shows, 20).map((batch) =>
+      ...insertBatches(
+        changes.shows.map((show) => ({
+          id: show.id,
+          title: show.title,
+          imageUrl: show.imageUrl,
+          episodes: show.episodes,
+          format: show.format,
+          status: show.status,
+          season: show.season,
+          year: show.year,
+          startDate: show.startDate,
+          endDate: show.endDate,
+          episodeMinutes: show.episodeMinutes,
+        })),
+      ).map((batch) =>
         db
           .insert(shows)
-          .values(
-            batch.map((show) => ({ id: show.id, title: show.title, imageUrl: show.imageUrl, episodes: show.episodes })),
-          )
+          .values([...batch])
           .onConflictDoUpdate({
             target: shows.id,
-            set: { title: sql`excluded.title`, imageUrl: sql`excluded.image_url`, episodes: sql`excluded.episodes` },
+            set: {
+              title: sql`excluded.title`,
+              imageUrl: sql`excluded.image_url`,
+              episodes: sql`excluded.episodes`,
+              format: sql`excluded.format`,
+              status: sql`excluded.status`,
+              season: sql`excluded.season`,
+              year: sql`excluded.year`,
+              startDate: sql`excluded.start_date`,
+              endDate: sql`excluded.end_date`,
+              episodeMinutes: sql`excluded.episode_minutes`,
+            },
           }),
       ),
-      ...chunks(changes.releases, 12).map((batch) =>
+      // One row per site id, so a site id two shows claim goes to the show saved last.
+      ...insertBatches([
+        ...new Map(
+          changes.shows.flatMap((show) => show.siteIds.map((siteId) => [siteId, { siteId, showId: show.id }] as const)),
+        ).values(),
+      ]).map((batch) =>
+        db
+          .insert(showSiteIds)
+          .values([...batch])
+          .onConflictDoUpdate({ target: showSiteIds.siteId, set: { showId: sql`excluded.show_id` } }),
+      ),
+      ...insertBatches(
+        changes.releases.map(({ release, revision }) => ({
+          key: releaseKey(release),
+          showId: release.showId,
+          episode: release.episode,
+          kind: release.kind,
+          region: release.region,
+          airsAt: DateTime.toEpochMillis(release.airsAt),
+          revision,
+        })),
+      ).map((batch) =>
         db
           .insert(releases)
-          .values(
-            batch.map(({ release, revision }) => ({
-              key: releaseKey(release),
-              showId: release.showId,
-              episode: release.episode,
-              kind: release.kind,
-              region: release.region,
-              airsAt: DateTime.toEpochMillis(release.airsAt),
-              revision,
-            })),
-          )
+          .values([...batch])
           .onConflictDoUpdate({
             target: releases.key,
             set: { airsAt: sql`excluded.airs_at`, revision: sql`excluded.revision` },
@@ -128,7 +198,7 @@ const catalog = Catalog.of({
             setWhere: sql`${releases.revision} < excluded.revision`,
           }),
       ),
-      ...chunks(updateRows, 20).map((batch) =>
+      ...insertBatches(updateRows).map((batch) =>
         db
           .insert(updates)
           .values([...batch])
@@ -176,18 +246,24 @@ const subscriptions = Subscriptions.of({
   followed: (identity) =>
     query("followed", () =>
       db
-        .select({ show: shows })
+        .select({ show: shows, siteIds: siteIdsOfShow })
         .from(follows)
         .innerJoin(shows, eq(shows.id, follows.showId))
         .where(sameIdentity(identity))
         .orderBy(asc(shows.title)),
-    ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, (row) => toShow(row.show)))),
+    ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, toShow))),
   claim: Effect.fn("Subscriptions.claim")(function* (limit) {
     const now = DateTime.toEpochMillis(yield* DateTime.now);
     const stale = now - leaseMillis;
     const candidates = yield* query("claim candidates", () =>
       db
-        .select({ platform: follows.platform, userId: follows.userId, show: shows, update: updates })
+        .select({
+          platform: follows.platform,
+          userId: follows.userId,
+          show: shows,
+          siteIds: siteIdsOfShow,
+          update: updates,
+        })
         .from(follows)
         .innerJoin(updates, and(eq(updates.showId, follows.showId), gte(updates.detectedAt, follows.since)))
         .innerJoin(shows, eq(shows.id, follows.showId))
@@ -237,7 +313,7 @@ const subscriptions = Subscriptions.of({
     return yield* Effect.forEach(claimed, (row) =>
       Effect.all({
         identity: decode(ChatIdentitySchema, "decode identity")({ platform: row.platform, userId: row.userId }),
-        show: toShow(row.show),
+        show: toShow(row),
         update: Schema.decodeEffect(ChangeJson)(row.update.change).pipe(
           Effect.mapError((cause) => new StoreFailed({ operation: "decode update", cause })),
           Effect.flatMap((change) =>

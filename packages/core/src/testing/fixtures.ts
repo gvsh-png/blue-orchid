@@ -6,6 +6,14 @@ export const frieren = new Show({
   title: "Frieren: Beyond Journey's End",
   imageUrl: null,
   episodes: 28,
+  format: "tv",
+  status: "finished",
+  season: "fall",
+  year: 2023,
+  startDate: "2023-09-29",
+  endDate: "2024-03-22",
+  episodeMinutes: 24,
+  siteIds: [ShowId.make("anilist:154587"), ShowId.make("myanimelist:52991")],
 });
 
 export const release = (overrides: Partial<ConstructorParameters<typeof Release>[0]> = {}) =>

@@ -8,5 +8,5 @@ export { Messengers, type Messenger } from "./ports/Messengers.ts";
 export { ScheduleSources, type ScheduleSource, type SourceSnapshot } from "./ports/ScheduleSources.ts";
 export { claimLease, maxAttempts, Subscriptions, type PendingDelivery } from "./ports/Subscriptions.ts";
 export { diffReleases } from "./schedule/diff.ts";
-export { nextSevenDays, releasesBetween } from "./schedule/schedule.ts";
+export { nextRelease, nextSevenDays, releasesBetween } from "./schedule/schedule.ts";
 export { syncSchedule } from "./schedule/sync.ts";
