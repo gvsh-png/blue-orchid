@@ -4,7 +4,7 @@ import { DateTime, Effect, Schema } from "effect";
 import { execute, parse, validate } from "graphql";
 
 import type { GraphQLContext } from "./context.ts";
-import { operations, ScheduleQuery } from "./operations.ts";
+import { operations, ScheduleQuery, ShowQuery } from "./operations.ts";
 import { schema } from "./schema.ts";
 
 describe("operations", () => {
@@ -35,6 +35,37 @@ describe("operations", () => {
       const decoded = yield* Schema.decodeUnknownEffect(ScheduleQuery.result)(answer.data);
       expect(decoded.schedule.map((row) => row.show.title)).toEqual([frieren.title]);
       expect(DateTime.formatIso(decoded.schedule[0]!.release.airsAt)).toBe("2026-01-09T15:00:00.000Z");
+    }),
+  );
+
+  it.effect("Show's result schema decodes a show found by another site's id, with its releases", () =>
+    Effect.gen(function* () {
+      const memory = yield* makeInMemory({
+        shows: [frieren],
+        releases: [
+          release({ episode: 1 }),
+          release({ episode: 2, airsAt: DateTime.makeUnsafe("2026-01-16T15:00:00Z") }),
+        ],
+      });
+      const contextValue: GraphQLContext = {
+        run: (effect) => Effect.runPromise(effect.pipe(Effect.provide(memory.layer))),
+        viewer: null,
+      };
+      const answer = yield* Effect.promise(() =>
+        Promise.resolve(
+          execute({
+            schema,
+            document: parse(ShowQuery.document),
+            variableValues: { id: "myanimelist:52991" },
+            contextValue,
+          }),
+        ),
+      );
+      expect(answer.errors).toBeUndefined();
+      const show = (yield* Schema.decodeUnknownEffect(ShowQuery.result)(answer.data)).show;
+      expect(show?.id).toBe(frieren.id);
+      expect(show?.releases.map((row) => row.release.episode)).toEqual([1, 2]);
+      expect(DateTime.formatIso(show!.releases[0]!.endsAt!)).toBe("2026-01-09T15:24:00.000Z");
     }),
   );
 

@@ -29,7 +29,10 @@ export class Catalog extends Context.Service<
       from: DateTime.Utc,
       to: DateTime.Utc,
     ) => Effect.Effect<ReadonlyArray<ScheduledRelease>, StoreFailed>;
+    /** `id` may be any of the show's site ids. */
     readonly show: (id: ShowId) => Effect.Effect<Show, ShowNotFound | StoreFailed>;
+    /** Every release of one show, earliest first. */
+    readonly showReleases: (id: ShowId) => Effect.Effect<ReadonlyArray<Release>, StoreFailed>;
     /** Shows whose title contains the text, best match first. */
     readonly searchShows: (title: string, limit: number) => Effect.Effect<ReadonlyArray<Show>, StoreFailed>;
     readonly releasesByKey: (keys: ReadonlyArray<string>) => Effect.Effect<ReadonlyArray<StoredRelease>, StoreFailed>;

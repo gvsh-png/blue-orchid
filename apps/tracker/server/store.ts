@@ -52,12 +52,26 @@ const catalog = Catalog.of({
       ),
     ),
   show: Effect.fn("Catalog.show")(function* (id) {
-    const [row] = yield* query("show", () => db.select().from(shows).where(eq(shows.id, id)).limit(1));
+    // The primary key answers most lookups. Another site's id scans site_ids, which is fine at catalog size.
+    const [row] = yield* query("show", () =>
+      db
+        .select()
+        .from(shows)
+        .where(
+          or(eq(shows.id, id), sql`EXISTS (SELECT 1 FROM json_each(${shows.siteIds}) WHERE json_each.value = ${id})`),
+        )
+        .orderBy(sql`${shows.id} = ${id} DESC`)
+        .limit(1),
+    );
     if (row === undefined) {
       return yield* new ShowNotFound({ query: id });
     }
     return yield* toShow(row);
   }),
+  showReleases: (id) =>
+    query("showReleases", () =>
+      db.select().from(releases).where(eq(releases.showId, id)).orderBy(asc(releases.airsAt)).limit(1000),
+    ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, toRelease))),
   searchShows: (title, limit) =>
     query("searchShows", () =>
       db
@@ -95,15 +109,41 @@ const catalog = Catalog.of({
       ),
     );
     const statements = [
-      ...chunks(changes.shows, 20).map((batch) =>
+      // 12 columns a show, so 8 shows stay under D1's 100 bound values.
+      ...chunks(changes.shows, 8).map((batch) =>
         db
           .insert(shows)
           .values(
-            batch.map((show) => ({ id: show.id, title: show.title, imageUrl: show.imageUrl, episodes: show.episodes })),
+            batch.map((show) => ({
+              id: show.id,
+              title: show.title,
+              imageUrl: show.imageUrl,
+              episodes: show.episodes,
+              format: show.format,
+              status: show.status,
+              season: show.season,
+              year: show.year,
+              startDate: show.startDate,
+              endDate: show.endDate,
+              episodeMinutes: show.episodeMinutes,
+              siteIds: [...show.siteIds],
+            })),
           )
           .onConflictDoUpdate({
             target: shows.id,
-            set: { title: sql`excluded.title`, imageUrl: sql`excluded.image_url`, episodes: sql`excluded.episodes` },
+            set: {
+              title: sql`excluded.title`,
+              imageUrl: sql`excluded.image_url`,
+              episodes: sql`excluded.episodes`,
+              format: sql`excluded.format`,
+              status: sql`excluded.status`,
+              season: sql`excluded.season`,
+              year: sql`excluded.year`,
+              startDate: sql`excluded.start_date`,
+              endDate: sql`excluded.end_date`,
+              episodeMinutes: sql`excluded.episode_minutes`,
+              siteIds: sql`excluded.site_ids`,
+            },
           }),
       ),
       ...chunks(changes.releases, 12).map((batch) =>

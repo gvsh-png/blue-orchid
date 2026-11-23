@@ -1,3 +1,4 @@
+import { sql } from "void/db";
 import { index, integer, primaryKey, sqliteTable, text } from "void/schema-d1";
 
 /** Times are epoch milliseconds in UTC. */
@@ -6,6 +7,17 @@ export const shows = sqliteTable("shows", {
   title: text("title").notNull(),
   imageUrl: text("image_url"),
   episodes: integer("episodes"),
+  format: text("format"),
+  status: text("status"),
+  season: text("season"),
+  year: integer("year"),
+  startDate: text("start_date"),
+  endDate: text("end_date"),
+  episodeMinutes: integer("episode_minutes"),
+  /** JSON array of site ids, including `id`. */
+  siteIds: text("site_ids", { mode: "json" })
+    .notNull()
+    .default(sql`'[]'`),
 });
 
 export const releases = sqliteTable(
