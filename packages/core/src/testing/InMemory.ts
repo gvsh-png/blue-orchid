@@ -80,6 +80,16 @@ export const makeInMemory = Effect.fn("InMemory.make")(function* (seed: {
             .toSorted((a, b) => DateTime.toEpochMillis(a.airsAt) - DateTime.toEpochMillis(b.airsAt)),
         ),
       ),
+    nextRelease: (id, from) =>
+      Ref.get(releases).pipe(
+        Effect.map((all) =>
+          [...all.values()]
+            .map((row) => row.release)
+            .filter((release) => release.showId === id && DateTime.isGreaterThanOrEqualTo(release.airsAt, from))
+            .toSorted((a, b) => DateTime.toEpochMillis(a.airsAt) - DateTime.toEpochMillis(b.airsAt))
+            .at(0),
+        ),
+      ),
     searchShows: (title, limit) =>
       Ref.get(shows).pipe(
         Effect.map((byId) =>

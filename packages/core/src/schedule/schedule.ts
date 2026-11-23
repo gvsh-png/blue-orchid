@@ -16,7 +16,5 @@ export const nextSevenDays = Effect.fn("Schedule.nextSevenDays")(function* () {
 /** The first release of a show that has not aired yet, or `undefined`. */
 export const nextRelease = Effect.fn("Schedule.nextRelease")(function* (show: ShowId) {
   const catalog = yield* Catalog;
-  const now = yield* DateTime.now;
-  const releases = yield* catalog.showReleases(show);
-  return releases.find((release) => DateTime.isGreaterThanOrEqualTo(release.airsAt, now));
+  return yield* catalog.nextRelease(show, yield* DateTime.now);
 });

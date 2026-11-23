@@ -5,4 +5,6 @@ ALTER TABLE `shows` ADD `year` integer;--> statement-breakpoint
 ALTER TABLE `shows` ADD `start_date` text;--> statement-breakpoint
 ALTER TABLE `shows` ADD `end_date` text;--> statement-breakpoint
 ALTER TABLE `shows` ADD `episode_minutes` integer;--> statement-breakpoint
-ALTER TABLE `shows` ADD `site_ids` text DEFAULT '[]' NOT NULL;
+ALTER TABLE `shows` ADD `site_ids` text DEFAULT '[]' NOT NULL;--> statement-breakpoint
+-- Shows saved before site ids existed list only their own id until the next sync fills in the rest.
+UPDATE `shows` SET `site_ids` = json_array(`id`) WHERE `site_ids` = '[]';

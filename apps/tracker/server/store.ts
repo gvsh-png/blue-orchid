@@ -52,17 +52,18 @@ const catalog = Catalog.of({
       ),
     ),
   show: Effect.fn("Catalog.show")(function* (id) {
-    // The primary key answers most lookups. Another site's id scans site_ids, which is fine at catalog size.
-    const [row] = yield* query("show", () =>
-      db
-        .select()
-        .from(shows)
-        .where(
-          or(eq(shows.id, id), sql`EXISTS (SELECT 1 FROM json_each(${shows.siteIds}) WHERE json_each.value = ${id})`),
-        )
-        .orderBy(sql`${shows.id} = ${id} DESC`)
-        .limit(1),
-    );
+    const [byId] = yield* query("show", () => db.select().from(shows).where(eq(shows.id, id)).limit(1));
+    // Only another site's id gets here. It scans site_ids, which is fine at catalog size.
+    const [row] =
+      byId === undefined
+        ? yield* query("show by site id", () =>
+            db
+              .select()
+              .from(shows)
+              .where(sql`EXISTS (SELECT 1 FROM json_each(${shows.siteIds}) WHERE json_each.value = ${id})`)
+              .limit(1),
+          )
+        : [byId];
     if (row === undefined) {
       return yield* new ShowNotFound({ query: id });
     }
@@ -72,6 +73,15 @@ const catalog = Catalog.of({
     query("showReleases", () =>
       db.select().from(releases).where(eq(releases.showId, id)).orderBy(asc(releases.airsAt)).limit(1000),
     ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, toRelease))),
+  nextRelease: (id, from) =>
+    query("nextRelease", () =>
+      db
+        .select()
+        .from(releases)
+        .where(and(eq(releases.showId, id), gte(releases.airsAt, DateTime.toEpochMillis(from))))
+        .orderBy(asc(releases.airsAt))
+        .limit(1),
+    ).pipe(Effect.flatMap(([row]) => (row === undefined ? Effect.succeed(undefined) : toRelease(row)))),
   searchShows: (title, limit) =>
     query("searchShows", () =>
       db
