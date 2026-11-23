@@ -1,0 +1,7 @@
+[tools]
+node = "24"
+pnpm = "10.34.9"
+
+[tasks.check]
+description = "Runs every check. CI and the pre-commit hook run this."
+run = ["pnpm install --frozen-lockfile", "pnpm check"]

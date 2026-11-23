@@ -1,0 +1,22 @@
+{
+  "name": "@blue-orchid/infra",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "plan": "alchemy plan",
+    "deploy": "alchemy deploy"
+  },
+  "dependencies": {
+    "@alchemy.run/cloudflare": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "alchemy": "catalog:",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/language-service": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}

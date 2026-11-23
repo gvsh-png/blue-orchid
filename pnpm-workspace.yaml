@@ -1,0 +1,59 @@
+packages:
+  - apps/*
+  - packages/*
+  - infra
+
+# Every shared version lives here, and packages reference it as "catalog:".
+# Bump effect and every @effect/* entry together. Bump vite-plus, vite and vitest together.
+catalogMode: strict
+catalog:
+  "@alchemy.run/cloudflare": 2.0.0-beta.85
+  "@effect/language-service": 0.87.5
+  "@effect/platform-node": 4.1.2
+  "@effect/vitest": 4.1.2
+  "@pothos/core": 4.16.0
+  "@tailwindcss/vite": 4.3.5
+  "@tanstack/react-router": 1.170.46
+  "@types/node": 24.19.2
+  "@types/react": 19.3.0
+  "@types/react-dom": 19.3.0
+  "@vitejs/plugin-react": 6.3.0
+  alchemy: 2.0.0-beta.85
+  better-auth: 1.7.18
+  dependency-cruiser: 18.7.2
+  discord-api-types: 0.38.58
+  effect: 4.1.2
+  graphql: 16.15.0
+  graphql-yoga: 6.0.1
+  knip: 6.44.2
+  react: 19.3.1
+  react-dom: 19.3.1
+  sherif: 1.13.0
+  tailwindcss: 4.3.5
+  typescript: 6.0.3
+  # Void, Vite+ and Alchemy must share one Vite, or their plugin types and runtimes split in two.
+  # Every package that runs vitest or Alchemy lists vite too: pnpm resolves a peer to the alias only from a direct dependency.
+  vite: npm:@voidzero-dev/vite-plus-core@1.5.0
+  vite-plus: 1.5.0
+  # Must equal the vitest that vite-plus bundles.
+  vitest: 5.1.0
+  void: 1.7.0
+
+overrides:
+  vite@*: "catalog:"
+  vitest@*: "catalog:"
+
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: "*"
+
+# A dependency must be 14 days old before it can be installed, so a hijacked release has time to be caught.
+minimumReleaseAge: 20160
+
+# Install scripts are off unless listed here.
+allowBuilds:
+  esbuild: true
+  workerd: true
+  better-sqlite3: false

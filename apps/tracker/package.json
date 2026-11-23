@@ -1,0 +1,36 @@
+{
+  "name": "@blue-orchid/tracker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "prepare": "void prepare",
+    "typecheck": "void prepare && tsc -p tsconfig.json",
+    "deploy": "void deploy",
+    "db:generate": "void db generate",
+    "db:migrate": "void db migrate",
+    "discord:register": "node --env-file-if-exists=.env scripts/register-discord-commands.ts"
+  },
+  "dependencies": {
+    "@blue-orchid/chat-discord": "workspace:*",
+    "@blue-orchid/core": "workspace:*",
+    "@blue-orchid/domain": "workspace:*",
+    "@blue-orchid/graphql": "workspace:*",
+    "@blue-orchid/web": "workspace:*",
+    "better-auth": "catalog:",
+    "effect": "catalog:",
+    "void": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/language-service": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@tailwindcss/vite": "catalog:",
+    "@types/node": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:"
+  }
+}
