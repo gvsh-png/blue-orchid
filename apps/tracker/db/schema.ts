@@ -19,6 +19,8 @@ export const releases = sqliteTable(
     kind: text("kind").notNull(),
     region: text("region").notNull(),
     airsAt: integer("airs_at").notNull(),
+    /** How many times this release has changed. An update's id carries the revision it created. */
+    revision: integer("revision").notNull().default(0),
   },
   (table) => [index("releases_airs_at").on(table.airsAt)],
 );
@@ -50,6 +52,7 @@ export const follows = sqliteTable(
   (table) => [primaryKey({ columns: [table.platform, table.userId, table.showId] })],
 );
 
+/** One row per update and follower once a run claims it. `status` is claimed, sent or failed. */
 export const deliveries = sqliteTable(
   "deliveries",
   {
@@ -58,7 +61,10 @@ export const deliveries = sqliteTable(
       .references(() => updates.id),
     platform: text("platform").notNull(),
     userId: text("user_id").notNull(),
-    deliveredAt: integer("delivered_at").notNull(),
+    status: text("status").notNull(),
+    attempts: integer("attempts").notNull(),
+    claimedAt: integer("claimed_at").notNull(),
+    deliveredAt: integer("delivered_at"),
   },
   (table) => [primaryKey({ columns: [table.updateId, table.platform, table.userId] })],
 );

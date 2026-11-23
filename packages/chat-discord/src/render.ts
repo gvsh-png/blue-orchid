@@ -14,14 +14,16 @@ const line = (entry: MessageEntry) => {
   return `**${escape(entry.title)}** · ${escape(entry.detail)} · ${stamp(entry.at, "f")} ${stamp(entry.at, "R")}${was}`;
 };
 
+const fit = (text: string) => (text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text);
+
 export const renderMessage = (message: Message): string => {
-  const lines = [escape(message.text)];
+  const lines = [fit(escape(message.text))];
   for (const [index, entry] of message.entries.entries()) {
     const next = line(entry);
     const rest = message.entries.length - index;
     const tail = `…and ${rest} more`;
     if ([...lines, next, tail].join("\n").length > maxLength) {
-      return [...lines, tail].join("\n");
+      return fit([...lines, tail].join("\n"));
     }
     lines.push(next);
   }

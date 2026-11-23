@@ -7,9 +7,16 @@ export interface ScheduledRelease {
   readonly release: Release;
 }
 
+/** A release as stored. `revision` counts the times it has changed, so each change gets its own update id. */
+export interface StoredRelease {
+  readonly release: Release;
+  readonly revision: number;
+}
+
 export interface CatalogChanges {
   readonly shows: ReadonlyArray<Show>;
-  readonly releases: ReadonlyArray<Release>;
+  /** Only releases that are new or moved, each with its new revision. */
+  readonly releases: ReadonlyArray<StoredRelease>;
   readonly updates: ReadonlyArray<Update>;
 }
 
@@ -17,6 +24,7 @@ export interface CatalogChanges {
 export class Catalog extends Context.Service<
   Catalog,
   {
+    /** Releases with `from <= airsAt < to`, earliest first. */
     readonly releasesBetween: (
       from: DateTime.Utc,
       to: DateTime.Utc,
@@ -24,8 +32,11 @@ export class Catalog extends Context.Service<
     readonly show: (id: ShowId) => Effect.Effect<Show, ShowNotFound | StoreFailed>;
     /** Shows whose title contains the text, best match first. */
     readonly searchShows: (title: string, limit: number) => Effect.Effect<ReadonlyArray<Show>, StoreFailed>;
-    readonly releasesByKey: (keys: ReadonlyArray<string>) => Effect.Effect<ReadonlyArray<Release>, StoreFailed>;
-    /** Upserts shows and releases, and inserts updates whose id is new. Safe to repeat. */
+    readonly releasesByKey: (keys: ReadonlyArray<string>) => Effect.Effect<ReadonlyArray<StoredRelease>, StoreFailed>;
+    /**
+     * Writes everything or nothing. A release must never be saved without its update: a retry would then see no
+     * change and the update would be lost. Updates whose id exists are skipped, so repeating a save is safe.
+     */
     readonly save: (changes: CatalogChanges) => Effect.Effect<void, StoreFailed>;
   }
 >()("orchid/core/Catalog") {}

@@ -56,7 +56,7 @@ builder.queryType({
   fields: (t) => ({
     schedule: t.field({
       type: [ScheduledReleaseRef],
-      description: "Releases airing between two times, earliest first. The window may be at most 31 days.",
+      description: "Releases with from <= airsAt < to, earliest first. The window may be at most 31 days.",
       args: { from: t.arg.string({ required: true }), to: t.arg.string({ required: true }) },
       resolve: (_, args, context) =>
         context.run(

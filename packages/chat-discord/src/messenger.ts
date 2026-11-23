@@ -1,14 +1,25 @@
 import type { Messenger } from "@blue-orchid/core";
 import { MessageNotSent } from "@blue-orchid/domain";
 import { Effect, Option, Redacted, Schema } from "effect";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
+import { HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/http";
 
 import { discordApi, DiscordConfig } from "./DiscordConfig.ts";
 import { renderMessage } from "./render.ts";
 
 const DmChannel = Schema.Struct({ id: Schema.String });
 
-const notSent = (cause: unknown) => new MessageNotSent({ platform: "discord", cause });
+/** Discord answers 403 when the user blocks DMs from the bot or shares no server with it, and 404 for an unknown user. */
+const permanentStatuses: ReadonlySet<number> = new Set([403, 404]);
+
+const isPermanent = (cause: unknown) =>
+  cause instanceof HttpClientError.HttpClientError &&
+  cause.reason._tag === "StatusCodeError" &&
+  permanentStatuses.has(cause.reason.response.status);
+
+const notSent = (cause: unknown) =>
+  cause instanceof MessageNotSent
+    ? cause
+    : new MessageNotSent({ platform: "discord", permanent: isPermanent(cause), cause });
 
 /** Sends a DM: open (or reuse) the DM channel, then post to it. */
 export const makeDiscordMessenger = Effect.gen(function* () {
@@ -19,7 +30,13 @@ export const makeDiscordMessenger = Effect.gen(function* () {
     send: (userId, message) =>
       Effect.gen(function* () {
         if (Option.isNone(settings)) {
-          return yield* Effect.fail(notSent("Discord is not set up: DISCORD_BOT_TOKEN is missing."));
+          return yield* Effect.fail(
+            new MessageNotSent({
+              platform: "discord",
+              permanent: false,
+              cause: "Discord is not set up: DISCORD_BOT_TOKEN is missing.",
+            }),
+          );
         }
         const authorized = HttpClientRequest.setHeader(
           "Authorization",

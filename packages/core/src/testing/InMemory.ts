@@ -1,16 +1,24 @@
 import type { ChatIdentity, Release, Show, ShowId, Update } from "@blue-orchid/domain";
-import { releaseKey, ShowNotFound } from "@blue-orchid/domain";
+import { MessageNotSent, releaseKey, ShowNotFound } from "@blue-orchid/domain";
 import { DateTime, Effect, Layer, Ref } from "effect";
 
 import type { Message } from "../chat/Message.ts";
+import type { StoredRelease } from "../ports/Catalog.ts";
 import { Catalog } from "../ports/Catalog.ts";
 import { Messengers } from "../ports/Messengers.ts";
-import { Subscriptions } from "../ports/Subscriptions.ts";
+import type { PendingDelivery } from "../ports/Subscriptions.ts";
+import { claimLease, maxAttempts, Subscriptions } from "../ports/Subscriptions.ts";
 
 interface Follow {
   readonly identity: ChatIdentity;
   readonly show: ShowId;
   readonly since: DateTime.Utc;
+}
+
+interface Delivery {
+  readonly status: "claimed" | "sent" | "failed";
+  readonly attempts: number;
+  readonly claimedAt: DateTime.Utc;
 }
 
 export interface SentMessage {
@@ -19,17 +27,26 @@ export interface SentMessage {
 }
 
 const identityKey = (identity: ChatIdentity) => `${identity.platform}:${identity.userId}`;
+const deliveryKey = (update: string, identity: ChatIdentity) => `${update}|${identityKey(identity)}`;
 
-/** In-memory Catalog, Subscriptions and Messengers for tests. `sent` holds every message the messengers sent. */
+/**
+ * In-memory Catalog, Subscriptions and Messengers for tests. `sent` holds every message the messengers sent.
+ * `failFor` makes sends to a user id fail: `true` permanently, `false` for now.
+ */
 export const makeInMemory = Effect.fn("InMemory.make")(function* (seed: {
   readonly shows?: ReadonlyArray<Show>;
   readonly releases?: ReadonlyArray<Release>;
+  readonly failFor?: ReadonlyMap<string, boolean>;
 }) {
   const shows = yield* Ref.make(new Map((seed.shows ?? []).map((show) => [show.id, show])));
-  const releases = yield* Ref.make(new Map((seed.releases ?? []).map((release) => [releaseKey(release), release])));
+  const releases = yield* Ref.make(
+    new Map<string, StoredRelease>(
+      (seed.releases ?? []).map((release) => [releaseKey(release), { release, revision: 0 }]),
+    ),
+  );
   const updates = yield* Ref.make(new Map<string, Update>());
   const follows = yield* Ref.make<ReadonlyArray<Follow>>([]);
-  const delivered = yield* Ref.make(new Set<string>());
+  const deliveries = yield* Ref.make(new Map<string, Delivery>());
   const sent = yield* Ref.make<ReadonlyArray<SentMessage>>([]);
 
   const catalog = Catalog.of({
@@ -37,7 +54,10 @@ export const makeInMemory = Effect.fn("InMemory.make")(function* (seed: {
       const byId = yield* Ref.get(shows);
       const all = yield* Ref.get(releases);
       return [...all.values()]
-        .filter((release) => DateTime.between(release.airsAt, { minimum: from, maximum: to }))
+        .map((row) => row.release)
+        .filter(
+          (release) => DateTime.isGreaterThanOrEqualTo(release.airsAt, from) && DateTime.isLessThan(release.airsAt, to),
+        )
         .toSorted((a, b) => DateTime.toEpochMillis(a.airsAt) - DateTime.toEpochMillis(b.airsAt))
         .flatMap((release) => {
           const show = byId.get(release.showId);
@@ -63,14 +83,14 @@ export const makeInMemory = Effect.fn("InMemory.make")(function* (seed: {
         Ref.update(shows, (byId) => new Map([...byId, ...changes.shows.map((show) => [show.id, show] as const)])),
         Ref.update(
           releases,
-          (all) => new Map([...all, ...changes.releases.map((release) => [releaseKey(release), release] as const)]),
+          (all) => new Map([...all, ...changes.releases.map((row) => [releaseKey(row.release), row] as const)]),
         ),
         Ref.update(
           updates,
           (all) =>
             new Map([
-              ...changes.updates.filter((update) => !all.has(update.id)).map((u) => [u.id, u] as const),
               ...all,
+              ...changes.updates.filter((update) => !all.has(update.id)).map((u) => [u.id, u] as const),
             ]),
         ),
       ]).pipe(Effect.asVoid),
@@ -97,32 +117,68 @@ export const makeInMemory = Effect.fn("InMemory.make")(function* (seed: {
         .filter((f) => identityKey(f.identity) === identityKey(identity))
         .flatMap((f) => byId.get(f.show) ?? []);
     }),
-    pending: Effect.fn("InMemory.pending")(function* (limit) {
+    claim: Effect.fn("InMemory.claim")(function* (limit) {
+      const now = yield* DateTime.now;
       const byId = yield* Ref.get(shows);
-      const all = [...(yield* Ref.get(updates)).values()];
-      const done = yield* Ref.get(delivered);
-      return (yield* Ref.get(follows))
-        .flatMap((f) =>
-          all
-            .filter(
-              (update) =>
-                update.change.release.showId === f.show &&
-                DateTime.isGreaterThanOrEqualTo(update.detectedAt, f.since) &&
-                !done.has(`${update.id}|${identityKey(f.identity)}`),
-            )
-            .flatMap((update) => {
-              const show = byId.get(f.show);
-              return show === undefined ? [] : [{ identity: f.identity, show, update }];
-            }),
-        )
-        .slice(0, limit);
+      const allUpdates = [...(yield* Ref.get(updates)).values()].toSorted(
+        (a, b) => DateTime.toEpochMillis(a.detectedAt) - DateTime.toEpochMillis(b.detectedAt),
+      );
+      const allFollows = yield* Ref.get(follows);
+      return yield* Ref.modify(deliveries, (current) => {
+        const claimable = (key: string) => {
+          const delivery = current.get(key);
+          return (
+            delivery === undefined ||
+            (delivery.status === "claimed" &&
+              DateTime.isLessThanOrEqualTo(DateTime.addDuration(delivery.claimedAt, claimLease), now))
+          );
+        };
+        const picked: Array<PendingDelivery> = allUpdates
+          .flatMap((update) =>
+            allFollows
+              .filter(
+                (f) =>
+                  update.change.release.showId === f.show &&
+                  DateTime.isGreaterThanOrEqualTo(update.detectedAt, f.since) &&
+                  claimable(deliveryKey(update.id, f.identity)),
+              )
+              .flatMap((f) => {
+                const show = byId.get(f.show);
+                return show === undefined ? [] : [{ identity: f.identity, show, update }];
+              }),
+          )
+          .slice(0, limit);
+        const next = new Map(current);
+        for (const { update, identity } of picked) {
+          const key = deliveryKey(update.id, identity);
+          next.set(key, { status: "claimed", attempts: (current.get(key)?.attempts ?? 0) + 1, claimedAt: now });
+        }
+        return [picked, next];
+      });
     }),
-    markDelivered: (update, identity) =>
-      Ref.update(delivered, (done) => new Set([...done, `${update}|${identityKey(identity)}`])),
+    markSent: (update, identity) =>
+      Ref.update(deliveries, (current) => {
+        const key = deliveryKey(update, identity);
+        const delivery = current.get(key);
+        return delivery === undefined ? current : new Map(current).set(key, { ...delivery, status: "sent" });
+      }),
+    markFailed: (update, identity, permanent) =>
+      Ref.update(deliveries, (current) => {
+        const key = deliveryKey(update, identity);
+        const delivery = current.get(key);
+        return delivery !== undefined && (permanent || delivery.attempts >= maxAttempts)
+          ? new Map(current).set(key, { ...delivery, status: "failed" })
+          : current;
+      }),
   });
 
   const recording = {
-    send: (userId: string, message: Message) => Ref.update(sent, (all) => [...all, { userId, message }]),
+    send: (userId: string, message: Message) => {
+      const permanent = seed.failFor?.get(userId);
+      return permanent === undefined
+        ? Ref.update(sent, (all) => [...all, { userId, message }])
+        : Effect.fail(new MessageNotSent({ platform: "test", permanent, cause: "failFor" }));
+    },
   };
   const messengers = Messengers.of({ discord: recording });
 

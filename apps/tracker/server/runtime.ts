@@ -19,7 +19,7 @@ export const runJob = (name: string, job: Job) =>
     ),
   );
 
-const graphql = makeGraphQLHandler({ graphiql: import.meta.env.DEV });
+const graphql = makeGraphQLHandler({ explore: import.meta.env.DEV });
 
 export const handleGraphQL = (request: Request, viewer: Viewer | null) => {
   const context: GraphQLContext = { run: (effect) => runtime.runPromise(effect), viewer };

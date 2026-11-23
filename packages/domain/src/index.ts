@@ -3,4 +3,4 @@ export { MessageNotSent, ShowNotFound, SourceUnavailable, StoreFailed } from "./
 export { ShowId, UpdateId } from "./ids.ts";
 export { Region, Release, ReleaseKind, releaseKey } from "./Release.ts";
 export { Show } from "./Show.ts";
-export { Change, Update } from "./Update.ts";
+export { Change, ChangeJson, Update } from "./Update.ts";

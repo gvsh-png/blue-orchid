@@ -7,21 +7,27 @@ import { updateMessage } from "./updateMessage.ts";
 /** A batch small enough to finish inside one cron run. The rest wait for the next run. */
 const batchSize = 100;
 
-/** Sends each pending update to its follower. A failed send stays pending and is tried again on the next run. */
+/**
+ * Sends each claimed update to its follower. A send that fails for now is retried after the claim lease, and one
+ * that can never succeed is given up, so neither blocks the deliveries behind it.
+ */
 export const deliverNotifications = Effect.fn("Notifications.deliver")(function* () {
   const subscriptions = yield* Subscriptions;
   const messengers = yield* Messengers;
-  const pending = yield* subscriptions.pending(batchSize);
+  const claimed = yield* subscriptions.claim(batchSize);
   const results = yield* Effect.forEach(
-    pending,
-    (delivery) =>
-      messengers[delivery.identity.platform]
-        .send(delivery.identity.userId, updateMessage(delivery.show, delivery.update))
-        .pipe(
-          Effect.andThen(subscriptions.markDelivered(delivery.update.id, delivery.identity)),
-          Effect.tapError((error) => Effect.logWarning("Notification not delivered", error)),
-          Effect.result,
+    claimed,
+    ({ identity, show, update }) =>
+      messengers[identity.platform].send(identity.userId, updateMessage(show, update)).pipe(
+        Effect.andThen(subscriptions.markSent(update.id, identity)),
+        Effect.catchTag("MessageNotSent", (error) =>
+          Effect.logWarning("Notification not delivered", error).pipe(
+            Effect.andThen(subscriptions.markFailed(update.id, identity, error.permanent)),
+            Effect.andThen(Effect.fail(error)),
+          ),
         ),
+        Effect.result,
+      ),
     { concurrency: 4 },
   );
   return { attempted: results.length, failed: results.filter(Result.isFailure).length };

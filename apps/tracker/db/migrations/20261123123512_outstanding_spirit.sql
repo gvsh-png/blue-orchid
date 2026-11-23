@@ -2,7 +2,10 @@ CREATE TABLE `deliveries` (
 	`update_id` text NOT NULL,
 	`platform` text NOT NULL,
 	`user_id` text NOT NULL,
-	`delivered_at` integer NOT NULL,
+	`status` text NOT NULL,
+	`attempts` integer NOT NULL,
+	`claimed_at` integer NOT NULL,
+	`delivered_at` integer,
 	PRIMARY KEY(`update_id`, `platform`, `user_id`),
 	FOREIGN KEY (`update_id`) REFERENCES `updates`(`id`) ON UPDATE no action ON DELETE no action
 );
@@ -23,6 +26,7 @@ CREATE TABLE `releases` (
 	`kind` text NOT NULL,
 	`region` text NOT NULL,
 	`airs_at` integer NOT NULL,
+	`revision` integer DEFAULT 0 NOT NULL,
 	FOREIGN KEY (`show_id`) REFERENCES `shows`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint

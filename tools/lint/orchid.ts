@@ -264,8 +264,11 @@ const noProcessEnv = defineRule({
   },
 });
 
-/** Alchemy resources Void already creates for the app. */
-const voidOwned = ["Cloudflare.Worker", "Cloudflare.Workers", "Cloudflare.Website", "Cloudflare.D1"];
+/** Alchemy resources Void already creates for the app, as exports of @alchemy.run/cloudflare. */
+const voidOwned = ["Worker", "Workers", "Website", "D1"];
+
+const infraMessage = (name: string) =>
+  `\`${name}\` is a resource Void owns. The app's Worker, site and D1 database belong to apps/tracker, and Void creates them on \`void deploy\`. Alchemy declares only what Void does not (see docs/internals/hosting.md).`;
 
 const infraOwnsExtrasOnly = defineRule({
   create(context) {
@@ -273,15 +276,36 @@ const infraOwnsExtrasOnly = defineRule({
       return {};
     }
     return {
-      MemberExpression(node) {
-        const path = memberPath(node);
-        if (path === undefined || !voidOwned.includes(path)) {
+      ImportDeclaration(node) {
+        const source = node.source.value;
+        const subpath = source.replace(/^@alchemy\.run\/cloudflare\/?/, "");
+        if (source === subpath) {
           return;
         }
-        context.report({
-          node,
-          message: `\`${path}\` is a resource Void owns. The app's Worker, D1, KV, R2, queues and crons belong to apps/tracker, and Void creates them on \`void deploy\`. Alchemy declares only what Void does not (see docs/internals/hosting.md).`,
-        });
+        const [first = ""] = subpath.split("/");
+        if (voidOwned.includes(first)) {
+          context.report({ node, message: infraMessage(source) });
+          return;
+        }
+        for (const specifier of node.specifiers) {
+          if (
+            specifier.type === "ImportSpecifier" &&
+            specifier.imported.type === "Identifier" &&
+            voidOwned.includes(specifier.imported.name)
+          ) {
+            context.report({ node: specifier, message: infraMessage(specifier.imported.name) });
+          }
+        }
+      },
+      MemberExpression(node) {
+        const path = memberPath(node);
+        if (path === undefined) {
+          return;
+        }
+        const [object = "", property = ""] = path.split(".");
+        if (object === "Cloudflare" && voidOwned.includes(property)) {
+          context.report({ node, message: infraMessage(path) });
+        }
       },
     };
   },

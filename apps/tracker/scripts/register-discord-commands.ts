@@ -1,6 +1,6 @@
 import { DiscordConfig, registerCommands } from "@blue-orchid/chat-discord";
 import { commands } from "@blue-orchid/core";
-import { Effect, Layer, Option, Redacted } from "effect";
+import { Effect, Exit, Layer, Option, Redacted } from "effect";
 import { FetchHttpClient } from "effect/http";
 
 /** Run after changing a command in packages/core/src/chat/commands.ts: `pnpm --filter @blue-orchid/tracker discord:register`. */
@@ -15,9 +15,13 @@ const settings =
       })
     : Option.none();
 
-registerCommands(commands).pipe(
-  Effect.provide(Layer.merge(Layer.succeed(DiscordConfig, settings), FetchHttpClient.layer)),
-  Effect.tap(() => Effect.logInfo(`Registered ${Object.keys(commands).length} commands with Discord.`)),
-  Effect.tapError((error) => Effect.logError(error.message)),
-  Effect.runFork,
-);
+void registerCommands(commands)
+  .pipe(
+    Effect.provide(Layer.merge(Layer.succeed(DiscordConfig, settings), FetchHttpClient.layer)),
+    Effect.tap(() => Effect.logInfo(`Registered ${Object.keys(commands).length} commands with Discord.`)),
+    Effect.tapError((error) => Effect.logError(error.message)),
+    Effect.runPromiseExit,
+  )
+  .then((exit) => {
+    process.exitCode = Exit.isSuccess(exit) ? 0 : 1;
+  });

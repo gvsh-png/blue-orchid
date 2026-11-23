@@ -11,9 +11,12 @@ runtime, and the use case reads the Catalog port, which `apps/tracker/server/sto
 runs the matching command from `packages/core/src/chat/commands.ts`, and renders its reply. Commands never fail:
 every error becomes a reply.
 
-**Sync, every 30 minutes.** `sync-schedule` asks each schedule source for the next five weeks, stores what they
-return, and records an update for each release that is new or has moved. The ids are deterministic, so a repeat
-run records nothing new.
+**Sync, every 30 minutes.** `sync-schedule` asks each schedule source for the next five weeks and records an
+update for each release that is new or has moved. Each release counts its changes in `revision`, and an update's
+id is the release key plus the revision it made. A release and its update are saved in one D1 batch, so a failed
+run saves neither and the retry finds the same change again.
 
-**Delivery, every 5 minutes.** `deliver-notifications` finds updates that followers have not been sent, sends
-each as a DM through the follower's platform, and marks it sent. A failed send stays pending for the next run.
+**Delivery, every 5 minutes.** `deliver-notifications` claims up to 100 unsent deliveries with a conditional
+upsert, so overlapping runs never send the same one, then sends each as a DM. A send that fails for now is retried
+once its 15-minute claim runs out, up to five tries. One that can never succeed, such as a user who blocks DMs from
+the bot, is given up at once. Neither holds up the deliveries behind it.

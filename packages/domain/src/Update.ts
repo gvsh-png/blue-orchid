@@ -10,6 +10,9 @@ export const Change = Schema.TaggedUnion({
 });
 export type Change = typeof Change.Type;
 
+/** How a Change is stored as text. toCodecJson turns its DateTimes into ISO strings, so it survives JSON. */
+export const ChangeJson = Schema.fromJsonString(Schema.toCodecJson(Change));
+
 export class Update extends Schema.Class<Update>("Update")({
   id: UpdateId,
   detectedAt: Schema.DateTimeUtc,

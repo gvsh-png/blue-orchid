@@ -40,16 +40,22 @@ export const syncSchedule = Effect.fn("Schedule.sync")(function* () {
     releaseKey,
   );
   const stored = yield* catalog.releasesByKey(releases.map(releaseKey));
-  const updates = diffReleases(stored, releases).map(
-    (change) =>
-      new Update({
-        id: UpdateId.make(
-          `${change._tag}:${releaseKey(change.release)}:${DateTime.toEpochMillis(change.release.airsAt)}`,
-        ),
-        detectedAt: now,
-        change,
-      }),
-  );
-  yield* catalog.save({ shows, releases, updates });
-  return { sources: sources.length, failedSources: failed.length, releases: releases.length, updates: updates.length };
+  const revisions = new Map(stored.map((row) => [releaseKey(row.release), row.revision]));
+  const changed = diffReleases(
+    stored.map((row) => row.release),
+    releases,
+  ).map((change) => {
+    const key = releaseKey(change.release);
+    const revision = (revisions.get(key) ?? 0) + 1;
+    return {
+      release: { release: change.release, revision },
+      update: new Update({ id: UpdateId.make(`${key}:r${revision}`), detectedAt: now, change }),
+    };
+  });
+  yield* catalog.save({
+    shows,
+    releases: changed.map((row) => row.release),
+    updates: changed.map((row) => row.update),
+  });
+  return { sources: sources.length, failedSources: failed.length, releases: releases.length, updates: changed.length };
 });
