@@ -13,7 +13,6 @@ export const nextSevenDays = Effect.fn("Schedule.nextSevenDays")(function* () {
   return yield* releasesBetween(now, DateTime.add(now, { days: 7 }));
 });
 
-/** The first release of a show that has not aired yet, or `undefined`. */
 export const nextRelease = Effect.fn("Schedule.nextRelease")(function* (show: ShowId) {
   const catalog = yield* Catalog;
   return yield* catalog.nextRelease(show, yield* DateTime.now);

@@ -14,7 +14,6 @@ export const shows = sqliteTable("shows", {
   startDate: text("start_date"),
   endDate: text("end_date"),
   episodeMinutes: integer("episode_minutes"),
-  /** JSON array of site ids, including `id`. */
   siteIds: text("site_ids", { mode: "json" })
     .notNull()
     .default(sql`'[]'`),

@@ -53,7 +53,6 @@ const catalog = Catalog.of({
     ),
   show: Effect.fn("Catalog.show")(function* (id) {
     const [byId] = yield* query("show", () => db.select().from(shows).where(eq(shows.id, id)).limit(1));
-    // Only another site's id gets here. It scans site_ids, which is fine at catalog size.
     const [row] =
       byId === undefined
         ? yield* query("show by site id", () =>

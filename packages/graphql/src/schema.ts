@@ -28,7 +28,6 @@ const ShowRef = builder.objectRef<Show>("Show");
 const ScheduledReleaseRef = builder.objectRef<ScheduledRelease>("ScheduledRelease");
 
 ShowRef.implement({
-  description: "Null on any field means not known yet.",
   fields: (t) => ({
     id: t.exposeID("id"),
     title: t.exposeString("title"),
@@ -40,17 +39,14 @@ ShowRef.implement({
     year: t.exposeInt("year", { nullable: true }),
     startDate: t.exposeString("startDate", {
       nullable: true,
-      description: "Partial date: 2027, 2027-04 or 2027-04-05",
     }),
-    endDate: t.exposeString("endDate", { nullable: true, description: "Partial date, like startDate" }),
+    endDate: t.exposeString("endDate", { nullable: true }),
     episodeMinutes: t.exposeInt("episodeMinutes", { nullable: true }),
     siteIds: t.idList({
-      description: "The show's id on every site that lists it, such as anilist:154587. Includes id.",
       resolve: (show) => show.siteIds,
     }),
     releases: t.field({
       type: [ScheduledReleaseRef],
-      description: "Every release of the show, earliest first.",
       resolve: (show, _, context) =>
         context.run(
           Catalog.use((catalog) => catalog.showReleases(show.id)).pipe(
@@ -62,7 +58,6 @@ ShowRef.implement({
     nextRelease: t.field({
       type: ScheduledReleaseRef,
       nullable: true,
-      description: "The first release that has not aired yet.",
       resolve: (show, _, context) =>
         context.run(
           nextRelease(show.id).pipe(
@@ -92,7 +87,6 @@ ScheduledReleaseRef.implement({
     release: t.field({ type: ReleaseRef, resolve: (row) => row.release }),
     endsAt: t.string({
       nullable: true,
-      description: "ISO 8601 time in UTC: airsAt plus the show's episodeMinutes. Null when the length is unknown.",
       resolve: ({ show, release }) =>
         show.episodeMinutes === null
           ? null
@@ -132,7 +126,6 @@ builder.queryType({
     show: t.field({
       type: ShowRef,
       nullable: true,
-      description: "A show by any of its site ids, such as anilist:154587 or myanimelist:52991.",
       args: { id: t.arg.id({ required: true }) },
       resolve: (_, args, context) =>
         context.run(

@@ -78,7 +78,6 @@ const ShowResult = Schema.Struct({
   ),
 });
 
-/** Everything the show page needs, by any of the show's site ids. */
 export const ShowQuery = {
   name: "Show",
   document: /* GraphQL */ `
