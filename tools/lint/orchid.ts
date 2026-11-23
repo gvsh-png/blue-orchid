@@ -278,6 +278,19 @@ const infraOwnsExtrasOnly = defineRule({
     /** Local names of `import * as X from "@alchemy.run/cloudflare"`, whatever the file calls it. */
     const namespaces = new Set<string>();
     return {
+      // Collect namespace names first: a module may use `Cloudflare.X` above the line that imports it.
+      Program(program) {
+        for (const statement of program.body) {
+          if (statement.type !== "ImportDeclaration" || statement.source.value !== "@alchemy.run/cloudflare") {
+            continue;
+          }
+          for (const specifier of statement.specifiers) {
+            if (specifier.type === "ImportNamespaceSpecifier") {
+              namespaces.add(specifier.local.name);
+            }
+          }
+        }
+      },
       ImportDeclaration(node) {
         const source = node.source.value;
         const subpath = source.replace(/^@alchemy\.run\/cloudflare\/?/, "");
@@ -290,9 +303,6 @@ const infraOwnsExtrasOnly = defineRule({
           return;
         }
         for (const specifier of node.specifiers) {
-          if (specifier.type === "ImportNamespaceSpecifier" && subpath === "") {
-            namespaces.add(specifier.local.name);
-          }
           if (
             specifier.type === "ImportSpecifier" &&
             specifier.imported.type === "Identifier" &&
