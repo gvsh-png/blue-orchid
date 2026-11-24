@@ -1,9 +1,9 @@
-import { DiscordConfig, registerCommands } from "@blue-orchid/chat-discord";
+import { DiscordConfig, registerCommands } from "@blue-orchid/discord";
 import { commands } from "@blue-orchid/core";
 import { Effect, Exit, Layer, Option, Redacted } from "effect";
 import { FetchHttpClient } from "effect/http";
 
-/** Run after changing a command in packages/core/src/chat/commands.ts: `pnpm --filter @blue-orchid/tracker discord:register`. */
+/** Run after changing a command in packages/core/src/chat/commands/: `pnpm --filter @blue-orchid/tracker discord:register`. */
 const { DISCORD_APPLICATION_ID, DISCORD_PUBLIC_KEY, DISCORD_BOT_TOKEN } = process.env;
 
 const settings =

@@ -1,4 +1,4 @@
-import { DiscordConfig, DiscordRoutes, makeDiscordMessenger } from "@blue-orchid/chat-discord";
+import { DiscordConfig, DiscordRoutes, makeDiscordMessenger } from "@blue-orchid/discord";
 import { Messengers, ScheduleSources } from "@blue-orchid/core";
 import { AniListCatalogLive } from "@blue-orchid/source-anilist";
 import { makeSyoboiSchedule } from "@blue-orchid/source-syoboi";
