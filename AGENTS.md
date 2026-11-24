@@ -48,7 +48,7 @@ package may import, and `docs/internals/architecture.md` traces a request and a 
 | `packages/core`           | Use cases, ports, chat commands, jobs, in-memory fakes       | `packages/core/AGENTS.md`           |
 | `packages/graphql`        | The API (Pothos, Yoga) and the website's operations          | `packages/graphql/AGENTS.md`        |
 | `packages/chat-discord`   | Discord slash commands and DMs                               | `packages/chat-discord/AGENTS.md`   |
-| `packages/source-anilist` | AniList as the catalog source                                | `packages/source-anilist/AGENTS.md` |
+| `packages/source-anilist` | AniList as the catalog and schedule source                   | `packages/source-anilist/AGENTS.md` |
 | `packages/web`            | The website (React, TanStack Router)                         | `packages/web/AGENTS.md`            |
 | `apps/tracker`            | The Void app: wiring, database, routes, crons, auth, deploys | `apps/tracker/AGENTS.md`            |
 | `infra`                   | The Alchemy stack, for cloud resources Void does not own     | `docs/internals/hosting.md`         |

@@ -1,1 +1,1 @@
-export { AniListCatalogLive, anilistApi } from "./source.ts";
+export { AniListCatalogLive, anilistApi, makeAniListSchedule } from "./source.ts";

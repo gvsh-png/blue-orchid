@@ -1,9 +1,11 @@
-import { CatalogSource } from "@blue-orchid/core";
+import { CatalogSource, ScheduleSources, syncSchedule } from "@blue-orchid/core";
+import { makeInMemory } from "@blue-orchid/core/testing";
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { DateTime, Effect, Layer } from "effect";
 import { HttpClient, HttpClientResponse } from "effect/http";
+import { TestClock } from "effect/testing";
 
-import { AniListCatalogLive } from "./source.ts";
+import { AniListCatalogLive, makeAniListSchedule } from "./source.ts";
 
 const goblin = {
   id: 209219,
@@ -46,10 +48,14 @@ const anilistAnswering = (pages: ReadonlyArray<unknown>) => {
   const client = HttpClient.make((request) =>
     Effect.sync(() => {
       bodies.push(request.body._tag === "Uint8Array" ? new TextDecoder().decode(request.body.body) : "");
-      return HttpClientResponse.fromWeb(request, new Response(JSON.stringify(pages[bodies.length - 1])));
+      return HttpClientResponse.fromWeb(
+        request,
+        new Response(JSON.stringify(pages[(bodies.length - 1) % pages.length])),
+      );
     }),
   );
-  return { bodies, layer: AniListCatalogLive.pipe(Layer.provide(Layer.succeed(HttpClient.HttpClient, client))) };
+  const http = Layer.succeed(HttpClient.HttpClient, client);
+  return { bodies, http, layer: AniListCatalogLive.pipe(Layer.provide(http)) };
 };
 
 describe("AniListCatalogLive", () => {
@@ -116,5 +122,47 @@ describe("AniListCatalogLive", () => {
       );
       expect(error._tag).toBe("SourceUnavailable");
     }),
+  );
+});
+
+describe("makeAniListSchedule", () => {
+  const week = { from: DateTime.makeUnsafe("2026-11-23T00:00:00Z"), to: DateTime.makeUnsafe("2026-11-30T23:00:00Z") };
+  const airing = {
+    ...goblin,
+    airingSchedule: {
+      nodes: [
+        { episode: 9, airingAt: 1796043600 },
+        { episode: 10, airingAt: 1796648400 },
+      ],
+    },
+  };
+  const answers = [page(false, [airing, { ...announced, airingSchedule: { nodes: [] } }])];
+
+  it.effect("gives raw JP releases in the window, with only the shows that have one", () =>
+    Effect.gen(function* () {
+      const anilist = anilistAnswering(answers);
+      const source = yield* makeAniListSchedule.pipe(Effect.provide(anilist.http));
+      const snapshot = yield* source.fetch(week.from, week.to);
+
+      expect(snapshot.shows.map((show) => show.id)).toEqual(["anilist:209219"]);
+      expect(
+        snapshot.releases.map((r) => [r.showId, r.episode, r.kind, r.region, DateTime.formatIso(r.airsAt)]),
+      ).toEqual([["anilist:209219", 9, "raw", "JP", "2026-11-30T13:00:00.000Z"]]);
+      expect(anilist.bodies[0]).toContain('"statusIn":["RELEASING","NOT_YET_RELEASED"],"withEpisodes":true');
+    }),
+  );
+
+  it.effect(
+    "a second sync with the same answers records no new updates (sync asks for five weeks, so both episodes count)",
+    () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(DateTime.toEpochMillis(week.from));
+        const memory = yield* makeInMemory({});
+        const source = yield* makeAniListSchedule.pipe(Effect.provide(anilistAnswering(answers).http));
+        const layer = Layer.merge(memory.layer, ScheduleSources.layer([source]));
+
+        expect((yield* syncSchedule().pipe(Effect.provide(layer))).updates).toBe(2);
+        expect((yield* syncSchedule().pipe(Effect.provide(layer))).updates).toBe(0);
+      }),
   );
 });
