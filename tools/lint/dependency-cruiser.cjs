@@ -44,6 +44,13 @@ const packages = {
     node: false,
     hint: "source-anilist implements core's CatalogSource for AniList. Import logic belongs in core.",
   },
+  "source-syoboi": {
+    dir: "packages/source-syoboi",
+    workspace: ["core", "domain"],
+    npm: ["effect"],
+    node: false,
+    hint: "source-syoboi implements core's ScheduleSource for Syoboi Calendar. Sync logic belongs in core.",
+  },
   web: {
     dir: "packages/web",
     workspace: ["domain", "graphql"],
@@ -53,7 +60,7 @@ const packages = {
   },
   tracker: {
     dir: "apps/tracker",
-    workspace: ["chat-discord", "core", "domain", "graphql", "source-anilist", "web"],
+    workspace: ["chat-discord", "core", "domain", "graphql", "source-anilist", "source-syoboi", "web"],
     npm: "any",
     node: true,
     hint: "tracker is the Void app: it wires packages together and deploys them. Logic goes in a package.",
