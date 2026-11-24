@@ -137,6 +137,20 @@ const makeCatalog = (db: Db) =>
           ),
         ),
       ),
+    ownersOf: (siteIds) =>
+      Effect.forEach(chunks(siteIds, maxBoundValues), (batch) =>
+        query("ownersOf", () =>
+          db
+            .select()
+            .from(showSiteIds)
+            .where(inArray(showSiteIds.siteId, [...batch])),
+        ),
+      ).pipe(
+        Effect.flatMap((batches) =>
+          decode(Schema.Array(Schema.Struct({ siteId: ShowId, showId: ShowId })), "decode owners")(batches.flat()),
+        ),
+        Effect.map((rows) => new Map(rows.map((row) => [row.siteId, row.showId]))),
+      ),
     save: Effect.fn("Catalog.save")(function* (changes) {
       const updateRows = yield* Effect.forEach(changes.updates, (update) =>
         Schema.encodeEffect(ChangeJson)(update.change).pipe(

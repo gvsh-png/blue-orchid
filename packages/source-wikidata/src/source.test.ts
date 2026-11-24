@@ -13,30 +13,27 @@ const frieren = {
   itemLabel: literal("Frieren: Beyond Journey's End"),
   types: literal("Q63952888"),
   episodeCount: literal("28"),
-  startTime: literal("2023-09-29T00:00:00Z"),
-  startPrecision: literal("11"),
-  endTime: literal("2024-03-22T00:00:00Z"),
-  endPrecisionMax: literal("11"),
-  syoboiId: literal("6680"),
-  myanimelistId: literal("52991"),
-  anilistId: literal("154587"),
+  start: literal("2023-09-29T00:00:00Z|11"),
+  end: literal("2024-03-22T00:00:00Z|11"),
+  syoboiIds: literal("6680"),
+  myanimelistIds: literal("52991 60001"),
+  anilistIds: literal("154587"),
 };
 
 const announced = {
   item: literal("http://www.wikidata.org/entity/Q999"),
   itemLabel: literal("Mada Mada"),
   types: literal("Q1107 Q20650540"),
-  startTime: literal("2027-04-01T00:00:00Z"),
-  startPrecision: literal("10"),
+  start: literal("2027-04-01T00:00:00Z|10"),
 };
 
 const airing = {
   item: literal("http://www.wikidata.org/entity/Q555"),
   itemLabel: literal("Goblin"),
   types: literal("Q113671041"),
-  startTime: literal("2026-10-05T00:00:00Z"),
-  startPrecision: literal("11"),
-  anidbId: literal("19942"),
+  start: literal("2026-10-05T00:00:00Z|11"),
+  end: literal("2026-01-01T00:00:00Z|9"),
+  anidbIds: literal("19942"),
 };
 
 const unnamed = { item: literal("http://www.wikidata.org/entity/Q777"), itemLabel: literal("Q777") };
@@ -44,9 +41,10 @@ const unnamed = { item: literal("http://www.wikidata.org/entity/Q777"), itemLabe
 /** Answers every request with `rows`, and records each request's SPARQL query. */
 const wikidataAnswering = (rows: ReadonlyArray<unknown>) => {
   const queries: Array<string> = [];
-  const client = HttpClient.make((request, url) =>
+  const client = HttpClient.make((request) =>
     Effect.sync(() => {
-      queries.push(url.searchParams.get("query") ?? "");
+      const form = request.body._tag === "Uint8Array" ? new TextDecoder().decode(request.body.body) : "";
+      queries.push(new URLSearchParams(form).get("query") ?? "");
       return HttpClientResponse.fromWeb(request, new Response(JSON.stringify({ results: { bindings: rows } })));
     }),
   );
@@ -74,7 +72,7 @@ describe("WikidataCatalogLive", () => {
         year: 2023,
         startDate: "2023-09-29",
         endDate: "2024-03-22",
-        siteIds: ["syoboi:6680", "anilist:154587", "myanimelist:52991", "wikidata:Q118135767"],
+        siteIds: ["syoboi:6680", "anilist:154587", "myanimelist:52991", "myanimelist:60001", "wikidata:Q118135767"],
       });
       expect(shows[1]).toMatchObject({
         id: "wikidata:Q999",
@@ -83,8 +81,13 @@ describe("WikidataCatalogLive", () => {
         season: "spring",
         startDate: "2027-04",
       });
-      expect(shows[2]).toMatchObject({ id: "anidb:19942", format: "ona", status: "airing" });
-      expect(wikidata.queries[0]).toContain("YEAR(?first) = 2023");
+      // An end known only as "2026" is not past until 2027.
+      expect(shows[2]).toMatchObject({ id: "anidb:19942", format: "ona", status: "airing", endDate: "2026" });
+      expect(wikidata.queries[0]).toContain("FILTER(YEAR(?date) = 2023)");
+      expect(wikidata.queries[1]).toContain("VALUES ?item { wd:Q118135767 wd:Q999 wd:Q555 wd:Q777 }");
+      expect(wikidata.queries[1]).toContain(
+        'HAVING (STRSTARTS(MIN(CONCAT(STR(?first), "|", STR(?firstPrecision))), "2023-"))',
+      );
     }),
   );
 

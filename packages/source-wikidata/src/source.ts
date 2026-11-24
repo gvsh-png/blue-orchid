@@ -7,17 +7,19 @@ import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
 export const wikidataApi = "https://query.wikidata.org/sparql";
 
-/** Wikidata's anime item types and the format each one means. */
-const formats: Readonly<Record<string, Format | null>> = {
-  Q63952888: "tv",
-  Q100269041: "tv",
-  Q20650540: "movie",
-  Q220898: "ova",
-  Q113687694: "ova",
-  Q113671041: "ona",
-  Q104775758: "special",
-  Q1107: null,
-};
+/** Wikidata's anime item types, in the order a show's format is picked when it has several. */
+const formats: ReadonlyArray<readonly [string, Format | null]> = [
+  ["Q63952888", "tv"],
+  ["Q100269041", "tv"],
+  ["Q20650540", "movie"],
+  ["Q220898", "ova"],
+  ["Q113687694", "ova"],
+  ["Q113671041", "ona"],
+  ["Q1047299", "ona"],
+  ["Q104775758", "special"],
+  ["Q117209498", "special"],
+  ["Q1107", null],
+];
 
 /** Site id prefix → Wikidata property. The first one an item has becomes the show's id. */
 const sites = [
@@ -30,43 +32,73 @@ const sites = [
   ["animenewsnetwork", "P1985"],
 ] as const;
 
-const literal = (time: DateTime.Utc) => `"${DateTime.formatIso(time)}"^^xsd:dateTime`;
+const literal = (time: DateTime.Utc) => `"${DateTime.formatIso(time)}"`;
+const dateTime = (time: DateTime.Utc) => `${literal(time)}^^xsd:dateTime`;
 
-const filterFor = (slice: CatalogSlice, now: DateTime.Utc) => {
+/** The earliest start (or else publication) and latest end, each as "time|precision" so the two stay paired. */
+const startOf = `MIN(CONCAT(STR(?first), "|", STR(?firstPrecision)))`;
+const endOf = `MAX(CONCAT(STR(?endTime), "|", STR(?endPrecision)))`;
+
+/** Finds the slice's items cheaply, and then the exact test on each item's chosen dates. */
+const filtersFor = (slice: CatalogSlice, now: DateTime.Utc) => {
+  const twoYearsAgo = literal(DateTime.subtract(now, { years: 2 }));
   switch (slice._tag) {
     case "Airing":
-      return `FILTER(BOUND(?first) && ?first <= ${literal(now)} && ?first >= ${literal(DateTime.subtract(now, { years: 2 }))} && (!BOUND(?end) || ?end >= ${literal(now)}))`;
+      return {
+        candidates: `?item wdt:P580|wdt:P577 ?date . FILTER(?date >= ${dateTime(DateTime.subtract(now, { years: 2 }))} && ?date <= ${dateTime(now)})`,
+        having: `${startOf} >= ${twoYearsAgo} && ${startOf} <= ${literal(now)} && (COUNT(?endTime) = 0 || ${endOf} >= ${literal(now)})`,
+      };
     case "Upcoming":
-      return `FILTER(BOUND(?first) && ?first > ${literal(now)})`;
+      return {
+        candidates: `?item wdt:P580|wdt:P577 ?date . FILTER(?date > ${dateTime(now)})`,
+        having: `${startOf} > ${literal(now)}`,
+      };
     case "Year":
-      return `FILTER(BOUND(?first) && YEAR(?first) = ${slice.year})`;
+      return {
+        candidates: `?item wdt:P580|wdt:P577 ?date . FILTER(YEAR(?date) = ${slice.year})`,
+        having: `STRSTARTS(${startOf}, "${String(slice.year).padStart(4, "0")}-")`,
+      };
+    case "Undated":
+      return { candidates: "FILTER NOT EXISTS { ?item wdt:P580|wdt:P577 [] }", having: undefined };
   }
 };
 
-const queryFor = (slice: CatalogSlice, now: DateTime.Utc) => `
+const candidatesQuery = (candidates: string) => `
+SELECT DISTINCT ?item WHERE {
+  VALUES ?animeType { ${formats.map(([id]) => `wd:${id}`).join(" ")} }
+  ?item wdt:P31 ?animeType .
+  ${candidates}
+}`;
+
+/** Only best-rank statements count, so a deprecated date never wins. */
+const timeOf = (property: string, time: string, precision: string) =>
+  `OPTIONAL { ?item p:${property} [ a wikibase:BestRank; psv:${property} [ wikibase:timeValue ?${time}; wikibase:timePrecision ?${precision} ] ] }`;
+
+// A flat query: Wikidata drops the VALUES binding of a nested GROUP BY and scans every item instead.
+const detailsQuery = (items: ReadonlyArray<string>, having: string | undefined) => `
 SELECT ?item ?itemLabel
   (GROUP_CONCAT(DISTINCT STRAFTER(STR(?type), "entity/"); separator=" ") AS ?types)
   (MAX(?episodes) AS ?episodeCount)
-  (MIN(?first) AS ?startTime) (MAX(?firstPrecision) AS ?startPrecision)
-  (MAX(?end) AS ?endTime) (MAX(?endPrecision) AS ?endPrecisionMax)
-  ${sites.map(([site]) => `(SAMPLE(?${site}) AS ?${site}Id)`).join(" ")}
+  (${startOf} AS ?start) (${endOf} AS ?end)
+  ${sites.map(([site]) => `(GROUP_CONCAT(DISTINCT ?${site}; separator=" ") AS ?${site}Ids)`).join(" ")}
 WHERE {
-  VALUES ?type { ${Object.keys(formats)
-    .map((id) => `wd:${id}`)
-    .join(" ")} }
-  ?item wdt:P31 ?type .
-  OPTIONAL { ?item p:P580/psv:P580 [ wikibase:timeValue ?start; wikibase:timePrecision ?startPrecision ] }
-  OPTIONAL { ?item p:P577/psv:P577 [ wikibase:timeValue ?published; wikibase:timePrecision ?publishedPrecision ] }
-  OPTIONAL { ?item p:P582/psv:P582 [ wikibase:timeValue ?end; wikibase:timePrecision ?endPrecision ] }
+  VALUES ?item { ${items.map((qid) => `wd:${qid}`).join(" ")} }
+  OPTIONAL { ?item wdt:P31 ?type }
+  ${timeOf("P580", "startTime", "startPrecision")}
+  ${timeOf("P577", "published", "publishedPrecision")}
+  ${timeOf("P582", "endTime", "endPrecision")}
   OPTIONAL { ?item wdt:P1113 ?episodes }
   ${sites.map(([site, property]) => `OPTIONAL { ?item wdt:${property} ?${site} }`).join("\n  ")}
-  BIND(COALESCE(?start, ?published) AS ?first)
+  BIND(COALESCE(?startTime, ?published) AS ?first)
   BIND(COALESCE(?startPrecision, ?publishedPrecision) AS ?firstPrecision)
-  ${filterFor(slice, now)}
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en,ja,mul". }
 }
 GROUP BY ?item ?itemLabel
+${having === undefined ? "" : `HAVING (${having})`}
 `;
+
+/** Items per details query: small enough to answer in seconds, and a POST body has no URL length limit. */
+const batchSize = 50;
 
 const Value = Schema.Struct({ value: Schema.String });
 const Answer = Schema.Struct({
@@ -74,13 +106,13 @@ const Answer = Schema.Struct({
 });
 type Row = (typeof Answer.Type)["results"]["bindings"][number];
 
-/** Wikidata precision 9 is a year, 10 a month, 11 a day. */
-const partialDate = (time: string | undefined, precision: string | undefined) => {
-  if (time === undefined) {
+/** A "time|precision" pair as a partial date. Wikidata precision 9 is a year, 10 a month, 11 a day. */
+const partialDate = (paired: string | undefined) => {
+  if (paired === undefined || paired === "") {
     return null;
   }
-  const digits = Number(precision ?? "9") >= 11 ? 10 : Number(precision ?? "9") === 10 ? 7 : 4;
-  return time.slice(0, digits);
+  const [time = "", precision = "9"] = paired.split("|");
+  return time.slice(0, Number(precision) >= 11 ? 10 : Number(precision) === 10 ? 7 : 4);
 };
 
 const seasons = ["winter", "spring", "summer", "fall"] as const;
@@ -95,31 +127,38 @@ const seasonOf = (date: string | null): Season | null => {
   return seasons[(Math.floor((month - 1) / 3) + (late ? 1 : 0)) % 4] ?? null;
 };
 
+/** `day` cut to `date`'s precision, so the two compare as equals. */
+const toPrecision = (date: string, day: string) => day.slice(0, date.length);
+
+const qidOf = (row: Row) => (row["item"]?.value ?? "").split("/").at(-1) ?? "";
+
 const toShow = (row: Row, now: DateTime.Utc) => {
-  const qid = (row["item"]?.value ?? "").split("/").at(-1) ?? "";
+  const qid = qidOf(row);
   const siteIds = [
-    ...sites.flatMap(([site]) => {
-      const id = row[`${site}Id`]?.value;
-      return id === undefined ? [] : [`${site}:${id}`];
-    }),
+    ...sites.flatMap(([site]) =>
+      (row[`${site}Ids`]?.value ?? "")
+        .split(" ")
+        .filter((id) => id !== "")
+        .toSorted()
+        .map((id) => `${site}:${id}`),
+    ),
     `wikidata:${qid}`,
   ];
-  const startDate = partialDate(row["startTime"]?.value, row["startPrecision"]?.value);
-  const endDate = partialDate(row["endTime"]?.value, row["endPrecisionMax"]?.value);
-  const nowIso = DateTime.formatIso(now);
-  const start = row["startTime"]?.value;
-  const end = row["endTime"]?.value;
-  const twoYearsAgo = DateTime.formatIso(DateTime.subtract(now, { years: 2 }));
+  const startDate = partialDate(row["start"]?.value);
+  const endDate = partialDate(row["end"]?.value);
+  // Compared at each date's own precision, so a show that ends "2026" is not finished until 2027.
+  const today = DateTime.formatIso(now).slice(0, 10);
+  const twoYearsAgo = DateTime.formatIso(DateTime.subtract(now, { years: 2 })).slice(0, 10);
   // Old shows often have no end date, so only a recent start without an end counts as airing.
   const status: Status | null =
-    end !== undefined && end <= nowIso
+    endDate !== null && endDate < toPrecision(endDate, today)
       ? "finished"
-      : start !== undefined && start > nowIso
+      : startDate !== null && startDate > toPrecision(startDate, today)
         ? "upcoming"
-        : start !== undefined && start >= twoYearsAgo
+        : startDate !== null && startDate >= toPrecision(startDate, twoYearsAgo)
           ? "airing"
           : null;
-  const types = (row["types"]?.value ?? "").split(" ");
+  const types = new Set((row["types"]?.value ?? "").split(" "));
   const label = row["itemLabel"]?.value ?? "";
   const episodes = Number(row["episodeCount"]?.value);
   return Schema.decodeUnknownEffect(Show)({
@@ -128,7 +167,7 @@ const toShow = (row: Row, now: DateTime.Utc) => {
     title: label === qid ? "" : label,
     imageUrl: null,
     episodes: Number.isInteger(episodes) ? episodes : null,
-    format: types.map((type) => formats[type]).find((format) => format !== undefined && format !== null) ?? null,
+    format: formats.find(([type, format]) => format !== null && types.has(type))?.[1] ?? null,
     status,
     season: seasonOf(startDate),
     year: startDate === null ? null : Number(startDate.slice(0, 4)),
@@ -147,17 +186,27 @@ export const WikidataCatalogLive = Layer.effect(
       HttpClient.filterStatusOk,
       HttpClient.retryTransient({ schedule: Schedule.spaced("1 minute"), times: 2 }),
     );
-    const fetch = Effect.fn("Wikidata.fetch")(function* (slice: CatalogSlice) {
-      const now = yield* DateTime.now;
-      const answer = yield* HttpClientRequest.get(wikidataApi).pipe(
+    const run = (query: string) =>
+      HttpClientRequest.post(wikidataApi).pipe(
         // Wikidata asks every client for a User-Agent with a way to reach its owner.
         HttpClientRequest.setHeader("User-Agent", "blue-orchid/0.1 (+https://github.com/noxaur/blue-orchid)"),
         HttpClientRequest.setHeader("Accept", "application/sparql-results+json"),
-        HttpClientRequest.setUrlParams({ query: queryFor(slice, now) }),
+        HttpClientRequest.bodyUrlParams({ query }),
         client.execute,
         Effect.flatMap(HttpClientResponse.schemaBodyJson(Answer)),
+        Effect.map((answer) => answer.results.bindings),
       );
-      const [shows, skipped] = yield* Effect.partition(answer.results.bindings, (row) => toShow(row, now));
+    const fetch = Effect.fn("Wikidata.fetch")(function* (slice: CatalogSlice) {
+      const now = yield* DateTime.now;
+      const { candidates, having } = filtersFor(slice, now);
+      const items = (yield* run(candidatesQuery(candidates))).map(qidOf);
+      const rows = (yield* Effect.forEach(
+        Array.from({ length: Math.ceil(items.length / batchSize) }, (_, index) =>
+          items.slice(index * batchSize, (index + 1) * batchSize),
+        ),
+        (batch) => run(detailsQuery(batch, having)),
+      )).flat();
+      const [shows, skipped] = yield* Effect.partition(rows, (row) => toShow(row, now));
       if (skipped.length > 0) {
         yield* Effect.logWarning("Skipped Wikidata items the catalog can't hold", skipped.length);
       }

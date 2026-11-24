@@ -144,6 +144,19 @@ describe("store on D1", () => {
   );
 
   it.effect(
+    "names the stored show that owns each known site id",
+    Effect.fn(function* () {
+      const store = yield* localStore;
+      const owners = yield* Effect.gen(function* () {
+        const catalog = yield* Catalog;
+        yield* catalog.save({ shows: [frieren], releases: [], updates: [] });
+        return yield* catalog.ownersOf([ShowId.make("myanimelist:52991"), ShowId.make("syoboi:1")]);
+      }).pipe(Effect.provide(store));
+      expect([...owners]).toEqual([["myanimelist:52991", frieren.id]]);
+    }),
+  );
+
+  it.effect(
     "stores a schedule source's show only when the catalog lacks it, so catalog details stay",
     Effect.fn(function* () {
       const store = yield* localStore;
