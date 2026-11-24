@@ -2,7 +2,7 @@ import type { ChatIdentity, Release, Show, ShowId, Update } from "@blue-orchid/d
 import { MessageNotSent, releaseKey, ShowNotFound } from "@blue-orchid/domain";
 import { DateTime, Effect, Layer, Ref } from "effect";
 
-import type { Message } from "../chat/Message.ts";
+import type { Reply } from "../chat/Reply.ts";
 import type { StoredRelease } from "../ports/Catalog.ts";
 import { Catalog } from "../ports/Catalog.ts";
 import { Messengers } from "../ports/Messengers.ts";
@@ -23,7 +23,7 @@ interface Delivery {
 
 export interface SentMessage {
   readonly userId: string;
-  readonly message: Message;
+  readonly reply: Reply;
 }
 
 const identityKey = (identity: ChatIdentity) => `${identity.platform}:${identity.userId}`;
@@ -90,6 +90,24 @@ export const makeInMemory = Effect.fn("InMemory.make")(function* (seed: {
             .at(0),
         ),
       ),
+    nextReleases: (ids, from) =>
+      Ref.get(releases).pipe(
+        Effect.map((all) => {
+          const next = new Map<ShowId, Release>();
+          for (const { release } of [...all.values()].toSorted(
+            (a, b) => DateTime.toEpochMillis(a.release.airsAt) - DateTime.toEpochMillis(b.release.airsAt),
+          )) {
+            if (
+              ids.includes(release.showId) &&
+              DateTime.isGreaterThanOrEqualTo(release.airsAt, from) &&
+              !next.has(release.showId)
+            ) {
+              next.set(release.showId, release);
+            }
+          }
+          return next;
+        }),
+      ),
     searchShows: (title, limit) =>
       Ref.get(shows).pipe(
         Effect.map((byId) =>
@@ -130,10 +148,12 @@ export const makeInMemory = Effect.fn("InMemory.make")(function* (seed: {
           : [...all, { identity, show, since }],
       );
     }),
-    unfollow: (identity, show) =>
+    unfollow: (identity, showIds) =>
       Ref.modify(follows, (all) => {
-        const rest = all.filter((f) => !(identityKey(f.identity) === identityKey(identity) && f.show === show));
-        return [rest.length < all.length, rest];
+        const rest = all.filter(
+          (f) => !(identityKey(f.identity) === identityKey(identity) && showIds.includes(f.show)),
+        );
+        return [all.length - rest.length, rest];
       }),
     followed: Effect.fn("InMemory.followed")(function* (identity) {
       const byId = yield* Ref.get(shows);
@@ -199,10 +219,10 @@ export const makeInMemory = Effect.fn("InMemory.make")(function* (seed: {
   });
 
   const recording = {
-    send: (userId: string, message: Message) => {
+    send: (userId: string, reply: Reply) => {
       const permanent = seed.failFor?.get(userId);
       return permanent === undefined
-        ? Ref.update(sent, (all) => [...all, { userId, message }])
+        ? Ref.update(sent, (all) => [...all, { userId, reply }])
         : Effect.fail(new MessageNotSent({ platform: "test", permanent, cause: "failFor" }));
     },
   };
