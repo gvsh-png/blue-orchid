@@ -126,6 +126,66 @@ describe("store on D1", () => {
   );
 
   it.effect(
+    "never lets an overlapping run that started earlier roll a release back, and stores no update for a lost write",
+    Effect.fn(function* () {
+      const store = yield* localStore;
+      const key = releaseKey(release());
+      const first = release({ airsAt: at("2026-01-09T17:00:00Z") });
+      const older = release({ airsAt: at("2026-01-09T15:00:00Z") });
+      const result = yield* Effect.gen(function* () {
+        const catalog = yield* Catalog;
+        const subscriptions = yield* Subscriptions;
+        yield* catalog.save({ shows: [frieren], releases: [], updates: [] });
+        yield* subscriptions.follow(reader, frieren.id);
+        // The later run stores revision 1.
+        yield* catalog.save({
+          shows: [],
+          releases: [{ release: first, revision: 1 }],
+          updates: [
+            new Update({
+              id: UpdateId.make(`${key}:r1`),
+              detectedAt: at("2026-01-05T10:00:00Z"),
+              change: { _tag: "EpisodeScheduled", release: first },
+            }),
+          ],
+        });
+        // A run that started earlier read revision 1 late, and proposes its older time as revision 2.
+        yield* catalog.save({
+          shows: [],
+          releases: [{ release: older, revision: 2 }],
+          updates: [
+            new Update({
+              id: UpdateId.make(`${key}:r2`),
+              detectedAt: at("2026-01-05T09:59:00Z"),
+              change: { _tag: "EpisodeRescheduled", release: older, previousAirsAt: first.airsAt },
+            }),
+          ],
+        });
+        // A run that read nothing proposes revision 1 again, with another time.
+        yield* catalog.save({
+          shows: [],
+          releases: [{ release: older, revision: 1 }],
+          updates: [
+            new Update({
+              id: UpdateId.make(`${key}:r1`),
+              detectedAt: at("2026-01-05T10:00:30Z"),
+              change: { _tag: "EpisodeScheduled", release: older },
+            }),
+          ],
+        });
+        return {
+          stored: yield* catalog.releasesByKey([key]),
+          claimed: yield* subscriptions.claim(10),
+        };
+      }).pipe(Effect.provide(store));
+      expect(result.stored.map((row) => [DateTime.formatIso(row.release.airsAt), row.revision])).toEqual([
+        ["2026-01-09T17:00:00.000Z", 1],
+      ]);
+      expect(result.claimed.map((delivery) => delivery.update.id)).toEqual([`${key}:r1`]);
+    }),
+  );
+
+  it.effect(
     "finds a show by any of its site ids, and a site id two shows claim goes to the one saved last",
     Effect.fn(function* () {
       const store = yield* localStore;

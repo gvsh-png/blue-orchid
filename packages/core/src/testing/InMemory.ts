@@ -115,28 +115,46 @@ export const makeInMemory = Effect.fn("InMemory.make")(function* (seed: {
         ),
       ),
     releasesByKey: (keys) => Ref.get(releases).pipe(Effect.map((all) => keys.flatMap((key) => all.get(key) ?? []))),
-    save: (changes) =>
-      Effect.all([
-        Ref.update(shows, (byId) => new Map([...byId, ...changes.shows.map((show) => [show.id, show] as const)])),
-        Ref.update(
-          releases,
-          (all) =>
-            new Map([
-              ...all,
-              ...changes.releases
-                .filter((row) => (all.get(releaseKey(row.release))?.revision ?? -1) < row.revision)
-                .map((row) => [releaseKey(row.release), row] as const),
-            ]),
-        ),
-        Ref.update(
-          updates,
-          (all) =>
-            new Map([
-              ...all,
-              ...changes.updates.filter((update) => !all.has(update.id)).map((u) => [u.id, u] as const),
-            ]),
-        ),
-      ]).pipe(Effect.asVoid),
+    save: Effect.fn("InMemory.save")(function* (changes) {
+      yield* Ref.update(shows, (byId) => new Map([...byId, ...changes.shows.map((show) => [show.id, show] as const)]));
+      const runAt = changes.updates[0]?.detectedAt;
+      const known = yield* Ref.get(updates);
+      // Like the database: only the next revision, and never over a revision a later run stored.
+      const next = yield* Ref.updateAndGet(releases, (all) => {
+        const accepted = changes.releases.filter((row) => {
+          const stored = all.get(releaseKey(row.release));
+          if (stored === undefined) {
+            return true;
+          }
+          const storedAt = known.get(`${releaseKey(row.release)}:r${stored.revision}`)?.detectedAt;
+          return (
+            row.revision === stored.revision + 1 &&
+            (runAt === undefined || storedAt === undefined || DateTime.isLessThanOrEqualTo(storedAt, runAt))
+          );
+        });
+        return new Map([...all, ...accepted.map((row) => [releaseKey(row.release), row] as const)]);
+      });
+      const revisions = new Map(changes.releases.map((row) => [releaseKey(row.release), row.revision]));
+      yield* Ref.update(
+        updates,
+        (all) =>
+          new Map([
+            ...all,
+            ...changes.updates
+              .filter((update) => {
+                const key = releaseKey(update.change.release);
+                const stored = next.get(key);
+                return (
+                  !all.has(update.id) &&
+                  stored !== undefined &&
+                  stored.revision === revisions.get(key) &&
+                  DateTime.Equivalence(stored.release.airsAt, update.change.release.airsAt)
+                );
+              })
+              .map((update) => [update.id, update] as const),
+          ]),
+      );
+    }),
   });
 
   const subscriptions = Subscriptions.of({
