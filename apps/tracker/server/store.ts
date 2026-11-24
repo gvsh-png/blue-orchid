@@ -23,6 +23,20 @@ const chunks = <A>(items: ReadonlyArray<A>, size: number): ReadonlyArray<Readonl
   Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
 
 /** Rows per insert, sized by how many columns a row binds. */
+const showRow = (show: Show) => ({
+  id: show.id,
+  title: show.title,
+  imageUrl: show.imageUrl,
+  episodes: show.episodes,
+  format: show.format,
+  status: show.status,
+  season: show.season,
+  year: show.year,
+  startDate: show.startDate,
+  endDate: show.endDate,
+  episodeMinutes: show.episodeMinutes,
+});
+
 const insertBatches = <A extends object>(rows: ReadonlyArray<A>) => {
   const [first] = rows;
   return first === undefined ? [] : chunks(rows, Math.floor(maxBoundValues / Object.keys(first).length));
@@ -136,21 +150,7 @@ const makeCatalog = (db: Db) =>
         ),
       );
       const statements = [
-        ...insertBatches(
-          changes.shows.map((show) => ({
-            id: show.id,
-            title: show.title,
-            imageUrl: show.imageUrl,
-            episodes: show.episodes,
-            format: show.format,
-            status: show.status,
-            season: show.season,
-            year: show.year,
-            startDate: show.startDate,
-            endDate: show.endDate,
-            episodeMinutes: show.episodeMinutes,
-          })),
-        ).map((batch) =>
+        ...insertBatches(changes.shows.map(showRow)).map((batch) =>
           db
             .insert(shows)
             .values([...batch])
@@ -182,6 +182,20 @@ const makeCatalog = (db: Db) =>
             .insert(showSiteIds)
             .values([...batch])
             .onConflictDoUpdate({ target: showSiteIds.siteId, set: { showId: sql`excluded.show_id` } }),
+        ),
+        ...insertBatches((changes.showsIfMissing ?? []).map(showRow)).map((batch) =>
+          db
+            .insert(shows)
+            .values([...batch])
+            .onConflictDoNothing(),
+        ),
+        ...insertBatches(
+          (changes.showsIfMissing ?? []).flatMap((show) => show.siteIds.map((siteId) => ({ siteId, showId: show.id }))),
+        ).map((batch) =>
+          db
+            .insert(showSiteIds)
+            .values([...batch])
+            .onConflictDoNothing(),
         ),
         ...insertBatches(
           changes.releases.map(({ release, revision }) => ({

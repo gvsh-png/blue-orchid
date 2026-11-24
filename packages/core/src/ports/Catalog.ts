@@ -15,6 +15,8 @@ export interface StoredRelease {
 
 export interface CatalogChanges {
   readonly shows: ReadonlyArray<Show>;
+  /** Shows a schedule source names: stored only when the catalog lacks them, so they never overwrite its details. */
+  readonly showsIfMissing?: ReadonlyArray<Show>;
   /** Only releases that are new or moved, each with its new revision. */
   readonly releases: ReadonlyArray<StoredRelease>;
   readonly updates: ReadonlyArray<Update>;

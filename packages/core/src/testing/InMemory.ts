@@ -99,7 +99,15 @@ export const makeInMemory = Effect.fn("InMemory.make")(function* (seed: {
     releasesByKey: (keys) => Ref.get(releases).pipe(Effect.map((all) => keys.flatMap((key) => all.get(key) ?? []))),
     save: (changes) =>
       Effect.all([
-        Ref.update(shows, (byId) => new Map([...byId, ...changes.shows.map((show) => [show.id, show] as const)])),
+        Ref.update(
+          shows,
+          (byId) =>
+            new Map([
+              ...(changes.showsIfMissing ?? []).map((show) => [show.id, show] as const),
+              ...byId,
+              ...changes.shows.map((show) => [show.id, show] as const),
+            ]),
+        ),
         Ref.update(
           releases,
           (all) =>

@@ -53,7 +53,8 @@ export const syncSchedule = Effect.fn("Schedule.sync")(function* () {
     };
   });
   yield* catalog.save({
-    shows,
+    shows: [],
+    showsIfMissing: shows,
     releases: changed.map((row) => row.release),
     updates: changed.map((row) => row.update),
   });

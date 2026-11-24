@@ -7,7 +7,7 @@ export type CatalogSlice =
   | { readonly _tag: "Upcoming" }
   | { readonly _tag: "Year"; readonly year: number };
 
-/** Where the catalog's shows come from, such as AniList. */
+/** Where the catalog's shows come from, such as Wikidata. */
 export class CatalogSource extends Context.Service<
   CatalogSource,
   {

@@ -144,6 +144,26 @@ describe("store on D1", () => {
   );
 
   it.effect(
+    "stores a schedule source's show only when the catalog lacks it, so catalog details stay",
+    Effect.fn(function* () {
+      const store = yield* localStore;
+      const found = yield* Effect.gen(function* () {
+        const catalog = yield* Catalog;
+        yield* catalog.save({ shows: [frieren], releases: [], updates: [] });
+        yield* catalog.save({
+          shows: [],
+          showsIfMissing: [show(frieren.id), show("syoboi:6000")],
+          releases: [],
+          updates: [],
+        });
+        return { known: yield* catalog.show(frieren.id), added: yield* catalog.show(ShowId.make("syoboi:6000")) };
+      }).pipe(Effect.provide(store));
+      expect(found.known).toEqual(frieren);
+      expect(found.added.title).toBe("Show syoboi:6000");
+    }),
+  );
+
+  it.effect(
     "saves a catalog slice's 1,000 shows, and more releases than one statement can bind",
     Effect.fn(function* () {
       const store = yield* localStore;
