@@ -63,7 +63,9 @@ describe("syncSchedule then deliverNotifications", () => {
       expect((yield* syncSchedule().pipe(Effect.provide(layer))).updates).toBe(0);
       yield* deliverNotifications().pipe(Effect.provide(layer));
 
-      expect((yield* memory.sent).map((message) => message.message.text)).toEqual([`${frieren.title} has a new time.`]);
+      const sent = yield* memory.sent;
+      expect(sent).toHaveLength(1);
+      expect(sent[0]?.reply).toMatchObject({ _tag: "ShowUpdate", update: { change: { _tag: "EpisodeRescheduled" } } });
       const stored = yield* Catalog.use((catalog) => catalog.show(alias)).pipe(Effect.provide(layer));
       expect(stored).toEqual(frieren);
     }),
@@ -88,7 +90,7 @@ describe("syncSchedule then deliverNotifications", () => {
       const sent = yield* memory.sent;
       expect(sent).toHaveLength(1);
       expect(sent[0]?.userId).toBe("1001");
-      expect(sent[0]?.message.text).toBe(`${frieren.title} has a new time.`);
+      expect(sent[0]?.reply).toMatchObject({ _tag: "ShowUpdate", update: { change: { _tag: "EpisodeRescheduled" } } });
     }),
   );
 

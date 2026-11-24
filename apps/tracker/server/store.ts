@@ -113,6 +113,27 @@ const makeCatalog = (db: Db) =>
           .orderBy(asc(releases.airsAt))
           .limit(1),
       ).pipe(Effect.flatMap(([row]) => (row === undefined ? Effect.succeed(undefined) : toRelease(row)))),
+    nextReleases: (ids, from) =>
+      Effect.forEach(chunks(ids, maxBoundValues - 1), (batch) =>
+        query("nextReleases", () =>
+          db
+            .select()
+            .from(releases)
+            .where(and(inArray(releases.showId, [...batch]), gte(releases.airsAt, DateTime.toEpochMillis(from))))
+            .orderBy(asc(releases.airsAt)),
+        ),
+      ).pipe(
+        Effect.flatMap((batches) => {
+          const earliest = new Map<string, (typeof batches)[number][number]>();
+          for (const row of batches.flat()) {
+            if (!earliest.has(row.showId)) {
+              earliest.set(row.showId, row);
+            }
+          }
+          return Effect.forEach([...earliest.values()], toRelease);
+        }),
+        Effect.map((next) => new Map(next.map((release) => [release.showId, release] as const))),
+      ),
     searchShows: (title, limit) =>
       query("searchShows", () =>
         db
@@ -272,13 +293,15 @@ const makeSubscriptions = (db: Db) =>
           .onConflictDoNothing(),
       );
     }),
-    unfollow: (identity, show) =>
-      query("unfollow", () =>
-        db
-          .delete(follows)
-          .where(and(sameIdentity(identity), eq(follows.showId, show)))
-          .returning({ showId: follows.showId }),
-      ).pipe(Effect.map((rows) => rows.length > 0)),
+    unfollow: (identity, showIds) =>
+      Effect.forEach(chunks(showIds, maxBoundValues - 2), (batch) =>
+        query("unfollow", () =>
+          db
+            .delete(follows)
+            .where(and(sameIdentity(identity), inArray(follows.showId, [...batch])))
+            .returning({ showId: follows.showId }),
+        ),
+      ).pipe(Effect.map((batches) => batches.flat().length)),
     followed: (identity) =>
       query("followed", () =>
         db
