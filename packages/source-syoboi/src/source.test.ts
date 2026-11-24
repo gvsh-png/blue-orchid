@@ -83,6 +83,17 @@ describe("makeSyoboiSchedule", () => {
   );
 
   it.effect(
+    "pages from a whole minute, so the last page still covers a broadcast in the window's final minute",
+    Effect.fn(function* () {
+      const syoboi = syoboiAnswering({ items: [] });
+      const source = yield* makeSyoboiSchedule("0 millis").pipe(Effect.provide(syoboi.layer));
+      const start = DateTime.add(from, { seconds: 30 });
+      yield* source.fetch(start, DateTime.add(start, { days: 20 }));
+      expect(syoboi.queries).toEqual(["?alt=json&start=202611241200&days=14", "?alt=json&start=202612081200&days=7"]);
+    }),
+  );
+
+  it.effect(
     "a second sync with the same listing records no new updates",
     Effect.fn(function* () {
       yield* TestClock.setTime(DateTime.toEpochMillis(from) - 3_600_000);

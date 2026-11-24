@@ -57,7 +57,8 @@ export const makeSyoboiSchedule = Effect.fn("Syoboi.make")(function* (spacing: D
 
   const fetch = Effect.fn("Syoboi.fetch")(function* (from: DateTime.Utc, to: DateTime.Utc) {
     const broadcasts: Array<typeof Broadcast.Type> = [];
-    for (let request = 0, start = from; DateTime.isLessThan(start, to); request++) {
+    // Syoboi's days end at whole minutes, so page from a whole minute: the last page then reaches past `to`.
+    for (let request = 0, start = DateTime.startOf(from, "minute"); DateTime.isLessThan(start, to); request++) {
       if (request > 0) {
         yield* Effect.sleep(spacing);
       }
