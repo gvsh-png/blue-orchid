@@ -138,20 +138,46 @@ const noAny = defineRule({
 
 const preferEffectFn = defineRule({
   create(context) {
+    const reported = new Set<ESTree.Node>();
     return {
-      ArrowFunctionExpression(node) {
-        // Inline callbacks like it.effect("...", () => Effect.gen(...)) are fine.
-        if (node.parent.type === "CallExpression" || node.params.length === 0) {
+      // `() => Effect.gen(...)`, or `return Effect.gen(...)` anywhere in a function's body.
+      CallExpression(node) {
+        if (memberPath(node.callee) !== "Effect.gen") {
           return;
         }
-        const body = node.body;
-        if (body.type !== "CallExpression" || memberPath(body.callee) !== "Effect.gen") {
+        // Look through `cond ? Effect.gen(...) : x` and `Effect.gen(...) satisfies T` to what returns it.
+        let value: ESTree.Node = node;
+        while (
+          (value.parent.type === "ConditionalExpression" && value.parent.test !== value) ||
+          value.parent.type === "TSSatisfiesExpression"
+        ) {
+          value = value.parent;
+        }
+        const parent = value.parent;
+        const isArrowBody = parent.type === "ArrowFunctionExpression" && parent.body === value;
+        if (!isArrowBody && parent.type !== "ReturnStatement") {
           return;
         }
+        let fn: ESTree.Node = parent;
+        while (
+          fn.type !== "ArrowFunctionExpression" &&
+          fn.type !== "FunctionExpression" &&
+          fn.type !== "FunctionDeclaration"
+        ) {
+          if (fn.type === "Program") {
+            return;
+          }
+          fn = fn.parent;
+        }
+        // A generator is already the body of Effect.gen or Effect.fn.
+        if ((fn.type !== "ArrowFunctionExpression" && fn.generator) || reported.has(fn)) {
+          return;
+        }
+        reported.add(fn);
         context.report({
-          node,
+          node: fn,
           message:
-            'Write functions that return an Effect with Effect.fn: `const name = Effect.fn("Area.name")(function* (arg) { ... })`. It adds a trace span and keeps one style.',
+            'Don\'t wrap Effect.gen in a function. Use Effect.fn, which adds a trace span and keeps one style: `const name = Effect.fn("Area.name")(function* (arg) { ... })`. Callbacks take it too: `it.effect("does x", Effect.fn(function* () { ... }))`, `HttpRouter.use(Effect.fn("Area.addRoutes")(function* (router) { ... }))`.',
         });
       },
     };
