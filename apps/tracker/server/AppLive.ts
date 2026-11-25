@@ -1,6 +1,7 @@
 import { DiscordConfig, DiscordRoutes, makeDiscordMessenger } from "@blue-orchid/discord";
 import { Messengers, ScheduleSources } from "@blue-orchid/core";
 import { AniListCatalogLive } from "@blue-orchid/source-anilist";
+import { makeSyoboiSchedule } from "@blue-orchid/source-syoboi";
 import { Effect, Layer, Option, Redacted } from "effect";
 import { FetchHttpClient, HttpRouter, HttpServerResponse } from "effect/http";
 import { env } from "void/env";
@@ -28,11 +29,13 @@ const MessengersLive = Layer.effect(
   }),
 );
 
-/**
- * Schedule sources, most trusted first. None are connected yet: the data-sources work adds them here.
- * See packages/core/src/ports/ScheduleSources.ts.
- */
-const SourcesLive = ScheduleSources.layer([]);
+/** Schedule sources, most trusted first. See packages/core/src/ports/ScheduleSources.ts. */
+const SourcesLive = Layer.effect(
+  ScheduleSources,
+  Effect.gen(function* () {
+    return [yield* makeSyoboiSchedule()];
+  }),
+);
 
 /** Every service the app's use cases need. Routes, crons and GraphQL all run on this. */
 export const AppLive = Layer.mergeAll(StoreLive, SourcesLive, AniListCatalogLive, MessengersLive).pipe(
