@@ -153,9 +153,13 @@ const makeCatalog = (db: Db) =>
             showId: update.change.release.showId,
             detectedAt: DateTime.toEpochMillis(update.detectedAt),
             change,
+            release: update.change.release,
           })),
         ),
       );
+      const revisions = new Map(changes.releases.map((row) => [releaseKey(row.release), row.revision]));
+      // Every update of one save shares the run's time. A save with no updates is never older than a stored change.
+      const runAt = updateRows[0]?.detectedAt ?? Number.MAX_SAFE_INTEGER;
       const statements = [
         ...insertBatches(
           changes.shows.map((show) => ({
@@ -221,15 +225,33 @@ const makeCatalog = (db: Db) =>
             .onConflictDoUpdate({
               target: releases.key,
               set: { airsAt: sql`excluded.airs_at`, revision: sql`excluded.revision` },
-              // A run that read an older revision changes nothing, and its update id already exists, so the release
-              // and its update stay a matching pair. The next sync sees the newer time and records it.
-              setWhere: sql`${releases.revision} < excluded.revision`,
+              // Only the next revision, and only from a run that started after the one that stored the current
+              // revision. Another overlapping run therefore never overwrites a newer time with an older snapshot.
+              setWhere: sql`${releases.revision} = excluded.revision - 1 AND NOT EXISTS (SELECT 1 FROM ${updates} WHERE ${updates.id} = ${releases.key} || ':r' || ${releases.revision} AND ${updates.detectedAt} > ${runAt})`,
             }),
         ),
-        ...insertBatches(updateRows).map((batch) =>
+        // An update is stored only when its release now holds that revision and time, so a run whose release write
+        // lost to another run leaves no update behind. The next sync sees the stored time and records any move.
+        ...updateRows.map((row) =>
           db
             .insert(updates)
-            .values([...batch])
+            .select(
+              db
+                .select({
+                  id: sql<string>`${row.id}`.as("id"),
+                  showId: sql<string>`${row.showId}`.as("show_id"),
+                  detectedAt: sql<number>`${row.detectedAt}`.as("detected_at"),
+                  change: sql<string>`${row.change}`.as("change"),
+                })
+                .from(releases)
+                .where(
+                  and(
+                    eq(releases.key, releaseKey(row.release)),
+                    eq(releases.revision, revisions.get(releaseKey(row.release)) ?? -1),
+                    eq(releases.airsAt, DateTime.toEpochMillis(row.release.airsAt)),
+                  ),
+                ),
+            )
             .onConflictDoNothing(),
         ),
       ];
