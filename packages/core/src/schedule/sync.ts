@@ -58,6 +58,7 @@ export const syncSchedule = Effect.fn("Schedule.sync")(function* () {
   const changed = diffReleases(
     stored.map((row) => row.release),
     releases,
+    now,
   ).map((change) => {
     const key = releaseKey(change.release);
     const revision = (revisions.get(key) ?? 0) + 1;

@@ -46,8 +46,9 @@ export class Catalog extends Context.Service<
     readonly ownersOf: (siteIds: ReadonlyArray<ShowId>) => Effect.Effect<ReadonlyMap<ShowId, ShowId>, StoreFailed>;
     /**
      * Writes everything or nothing. A release must never be saved without its update: a retry would then see no
-     * change and the update would be lost. Updates whose id exists are skipped, and a release is only
-     * replaced by a higher revision, so repeating a save, or two runs saving the same revision, is safe.
+     * change and the update would be lost. A release is only replaced by the next revision, and never over a
+     * revision that a later run stored; an update is kept only when its release now holds its revision and time.
+     * Repeating a save, or overlapping runs saving in any order, therefore never loses or doubles an update.
      */
     readonly save: (changes: CatalogChanges) => Effect.Effect<void, StoreFailed>;
   }

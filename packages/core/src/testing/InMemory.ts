@@ -126,56 +126,74 @@ export const makeInMemory = Effect.fn("InMemory.make")(function* (seed: {
           );
         }),
       ),
-    save: (changes) =>
-      Effect.all([
-        Ref.update(shows, (byId) => {
-          const next = new Map([...byId, ...changes.shows.map((show) => [show.id, show] as const)]);
-          for (const show of changes.showsIfMissing ?? []) {
-            const stored = next.get(show.id);
-            // Like the database: a known show keeps its details and gains only the site ids nobody has yet.
-            const owned = new Set([...next.values()].flatMap((each) => each.siteIds));
-            const added = show.siteIds.filter((siteId) => !owned.has(siteId));
-            next.set(
-              show.id,
-              stored === undefined
-                ? show
-                : new Show({
-                    id: stored.id,
-                    title: stored.title,
-                    imageUrl: stored.imageUrl,
-                    episodes: stored.episodes,
-                    format: stored.format,
-                    status: stored.status,
-                    season: stored.season,
-                    year: stored.year,
-                    startDate: stored.startDate,
-                    endDate: stored.endDate,
-                    episodeMinutes: stored.episodeMinutes,
-                    siteIds: [...stored.siteIds, ...added],
-                  }),
-            );
+    save: Effect.fn("InMemory.save")(function* (changes) {
+      yield* Ref.update(shows, (byId) => {
+        const next = new Map([...byId, ...changes.shows.map((show) => [show.id, show] as const)]);
+        for (const show of changes.showsIfMissing ?? []) {
+          const stored = next.get(show.id);
+          // Like the database: a known show keeps its details and gains only the site ids nobody has yet.
+          const owned = new Set([...next.values()].flatMap((each) => each.siteIds));
+          const added = show.siteIds.filter((siteId) => !owned.has(siteId));
+          next.set(
+            show.id,
+            stored === undefined
+              ? show
+              : new Show({
+                  id: stored.id,
+                  title: stored.title,
+                  imageUrl: stored.imageUrl,
+                  episodes: stored.episodes,
+                  format: stored.format,
+                  status: stored.status,
+                  season: stored.season,
+                  year: stored.year,
+                  startDate: stored.startDate,
+                  endDate: stored.endDate,
+                  episodeMinutes: stored.episodeMinutes,
+                  siteIds: [...stored.siteIds, ...added],
+                }),
+          );
+        }
+        return next;
+      });
+      const runAt = changes.updates[0]?.detectedAt;
+      const known = yield* Ref.get(updates);
+      // Like the database: only the next revision, and never over a revision a later run stored.
+      const next = yield* Ref.updateAndGet(releases, (all) => {
+        const accepted = changes.releases.filter((row) => {
+          const stored = all.get(releaseKey(row.release));
+          if (stored === undefined) {
+            return true;
           }
-          return next;
-        }),
-        Ref.update(
-          releases,
-          (all) =>
-            new Map([
-              ...all,
-              ...changes.releases
-                .filter((row) => (all.get(releaseKey(row.release))?.revision ?? -1) < row.revision)
-                .map((row) => [releaseKey(row.release), row] as const),
-            ]),
-        ),
-        Ref.update(
-          updates,
-          (all) =>
-            new Map([
-              ...all,
-              ...changes.updates.filter((update) => !all.has(update.id)).map((u) => [u.id, u] as const),
-            ]),
-        ),
-      ]).pipe(Effect.asVoid),
+          const storedAt = known.get(`${releaseKey(row.release)}:r${stored.revision}`)?.detectedAt;
+          return (
+            row.revision === stored.revision + 1 &&
+            (runAt === undefined || storedAt === undefined || DateTime.isLessThanOrEqualTo(storedAt, runAt))
+          );
+        });
+        return new Map([...all, ...accepted.map((row) => [releaseKey(row.release), row] as const)]);
+      });
+      const revisions = new Map(changes.releases.map((row) => [releaseKey(row.release), row.revision]));
+      yield* Ref.update(
+        updates,
+        (all) =>
+          new Map([
+            ...all,
+            ...changes.updates
+              .filter((update) => {
+                const key = releaseKey(update.change.release);
+                const stored = next.get(key);
+                return (
+                  !all.has(update.id) &&
+                  stored !== undefined &&
+                  stored.revision === revisions.get(key) &&
+                  DateTime.Equivalence(stored.release.airsAt, update.change.release.airsAt)
+                );
+              })
+              .map((update) => [update.id, update] as const),
+          ]),
+      );
+    }),
   });
 
   const subscriptions = Subscriptions.of({
